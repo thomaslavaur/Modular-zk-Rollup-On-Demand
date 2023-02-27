@@ -21,6 +21,8 @@ pub enum OpError {
     MintNFTOpError(#[from] MintNFTOpError),
     #[error("The transaction can't be executed in the block because of an invalid timestamp")]
     TimestampError,
+    #[error(transparent)]
+    ChangeGroupOpError(#[from] ChangeGroupOpError),
 }
 
 #[derive(Debug, Error, PartialEq)]

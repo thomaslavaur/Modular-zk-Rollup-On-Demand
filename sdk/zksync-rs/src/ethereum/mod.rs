@@ -2,6 +2,7 @@
 
 use num::BigUint;
 use serde_json::{Map, Value};
+use std::ops::Add;
 use std::{convert::TryFrom, time::Duration};
 use std::{str::FromStr, time::Instant};
 use web3::contract::tokens::Tokenize;
@@ -352,6 +353,7 @@ impl<S: EthereumSigner> EthereumProvider<S> {
         token: impl Into<TokenLike>,
         amount: U256,
         sync_address: H160,
+        group: u16,
     ) -> Result<H256, ClientError> {
         let token = token.into();
         let token_info = self
@@ -365,7 +367,9 @@ impl<S: EthereumSigner> EthereumProvider<S> {
                 gas: Some(200_000.into()),
                 ..Default::default()
             };
-            let data = self.client().encode_tx_data("depositETH", sync_address);
+            let data = self
+                .client()
+                .encode_tx_data("depositETH", (sync_address, group));
 
             self.client()
                 .sign_prepared_tx(data, options)
@@ -389,7 +393,7 @@ impl<S: EthereumSigner> EthereumProvider<S> {
                 gas: Some(gas_limit.into()),
                 ..Default::default()
             };
-            let params = (token_info.address, amount, sync_address);
+            let params = (token_info.address, amount, sync_address, group);
             let data = self.client().encode_tx_data("depositERC20", params);
 
             self.client()
@@ -407,11 +411,71 @@ impl<S: EthereumSigner> EthereumProvider<S> {
         Ok(transaction_hash)
     }
 
+    pub async fn withdraw_pending_balance(
+        &self,
+        address: H160,
+        token: impl Into<TokenLike>,
+        amount: u128,
+    ) -> Result<H256, ClientError> {
+        let token = token.into();
+        let token = self
+            .tokens_cache
+            .resolve(token.clone())
+            .ok_or(ClientError::UnknownToken)?;
+
+        let options = Options {
+            gas: Some(500_000.into()),
+            ..Default::default()
+        };
+
+        let data = self
+            .client()
+            .encode_tx_data("withdrawPendingBalance", (address, token.address, amount));
+        let signed_tx = self
+            .client()
+            .sign_prepared_tx(data, options)
+            .await
+            .map_err(|_| ClientError::IncorrectCredentials)?;
+
+        let transaction_hash = self
+            .client()
+            .send_raw_tx(signed_tx.raw_tx)
+            .await
+            .map_err(|err| ClientError::NetworkError(err.to_string()))?;
+
+        Ok(transaction_hash)
+    }
+
+    pub async fn withdraw_pending_balance_nft(&self, token: u32) -> Result<H256, ClientError> {
+        let options = Options {
+            gas: Some(500_000.into()),
+            ..Default::default()
+        };
+
+        let data = self
+            .client()
+            .encode_tx_data("withdrawPendingNFTBalance", token);
+        let signed_tx = self
+            .client()
+            .sign_prepared_tx(data, options)
+            .await
+            .map_err(|_| ClientError::IncorrectCredentials)?;
+
+        let transaction_hash = self
+            .client()
+            .send_raw_tx(signed_tx.raw_tx)
+            .await
+            .map_err(|err| ClientError::NetworkError(err.to_string()))?;
+
+        Ok(transaction_hash)
+    }
+
     /// Performs a full exit for a certain token.
     pub async fn full_exit(
         &self,
         token: impl Into<TokenLike>,
         account_id: AccountId,
+        group: u16,
     ) -> Result<H256, ClientError> {
         let token = token.into();
         let token = self
@@ -427,7 +491,46 @@ impl<S: EthereumSigner> EthereumProvider<S> {
 
         let data = self
             .client()
-            .encode_tx_data("requestFullExit", (account_id, token.address));
+            .encode_tx_data("requestFullExit", (account_id, token.address, group, 0u16));
+        let signed_tx = self
+            .client()
+            .sign_prepared_tx(data, options)
+            .await
+            .map_err(|_| ClientError::IncorrectCredentials)?;
+
+        let transaction_hash = self
+            .client()
+            .send_raw_tx(signed_tx.raw_tx)
+            .await
+            .map_err(|err| ClientError::NetworkError(err.to_string()))?;
+
+        Ok(transaction_hash)
+    }
+
+    /// Performs a full change group for a certain token.
+    pub async fn full_change_group(
+        &self,
+        token: impl Into<TokenLike>,
+        account_id: AccountId,
+        group1: u16,
+        group2: u16,
+    ) -> Result<H256, ClientError> {
+        let token = token.into();
+        let token = self
+            .tokens_cache
+            .resolve(token.clone())
+            .ok_or(ClientError::UnknownToken)?;
+        let account_id = U256::from(*account_id);
+
+        let options = Options {
+            gas: Some(500_000.into()),
+            ..Default::default()
+        };
+
+        let data = self.client().encode_tx_data(
+            "requestFullExit",
+            (account_id, token.address, group1, group2),
+        );
         let signed_tx = self
             .client()
             .sign_prepared_tx(data, options)
@@ -446,12 +549,10 @@ impl<S: EthereumSigner> EthereumProvider<S> {
     /// Performs a full exit for a certain nft.
     pub async fn full_exit_nft(
         &self,
-        token: TokenId,
+        token: u32,
         account_id: AccountId,
+        group: u16,
     ) -> Result<H256, ClientError> {
-        if token.0 < MIN_NFT_TOKEN_ID {
-            return Err(ClientError::UnknownToken);
-        }
         let account_id = U256::from(*account_id);
         let options = Options {
             gas: Some(500_000.into()),
@@ -460,7 +561,7 @@ impl<S: EthereumSigner> EthereumProvider<S> {
 
         let data = self
             .eth_client
-            .encode_tx_data("requestFullExitNFT", (account_id, token.0));
+            .encode_tx_data("requestFullExitNFT", (account_id, token, group));
         let signed_tx = self
             .eth_client
             .sign_prepared_tx(data, options)
@@ -469,6 +570,88 @@ impl<S: EthereumSigner> EthereumProvider<S> {
 
         let transaction_hash = self
             .eth_client
+            .send_raw_tx(signed_tx.raw_tx)
+            .await
+            .map_err(|err| ClientError::NetworkError(err.to_string()))?;
+
+        Ok(transaction_hash)
+    }
+
+    pub async fn start_group(
+        &self,
+        address: H160,
+        group: u16,
+        permissioned: bool,
+    ) -> Result<H256, ClientError> {
+        let signed_tx = {
+            let options = Options {
+                gas: Some(200_000.into()),
+                ..Default::default()
+            };
+            let data = self
+                .client()
+                .encode_tx_data("startGroup", (group, address, permissioned));
+
+            self.client()
+                .sign_prepared_tx(data, options)
+                .await
+                .map_err(|_| ClientError::IncorrectCredentials)?
+        };
+
+        let transaction_hash = self
+            .client()
+            .send_raw_tx(signed_tx.raw_tx)
+            .await
+            .map_err(|err| ClientError::NetworkError(err.to_string()))?;
+
+        Ok(transaction_hash)
+    }
+
+    pub async fn close_group(&self) -> Result<H256, ClientError> {
+        let signed_tx = {
+            let options = Options {
+                gas: Some(200_000.into()),
+                ..Default::default()
+            };
+            let data = self.client().encode_tx_data("closeGroup", ());
+
+            self.client()
+                .sign_prepared_tx(data, options)
+                .await
+                .map_err(|_| ClientError::IncorrectCredentials)?
+        };
+
+        let transaction_hash = self
+            .client()
+            .send_raw_tx(signed_tx.raw_tx)
+            .await
+            .map_err(|err| ClientError::NetworkError(err.to_string()))?;
+
+        Ok(transaction_hash)
+    }
+
+    pub async fn manage_whitelist(
+        &self,
+        user: Address,
+        add_or_remove: bool,
+    ) -> Result<H256, ClientError> {
+        let signed_tx = {
+            let options = Options {
+                gas: Some(200_000.into()),
+                ..Default::default()
+            };
+            let data = self
+                .client()
+                .encode_tx_data("manageWhitelist", (user, add_or_remove));
+
+            self.client()
+                .sign_prepared_tx(data, options)
+                .await
+                .map_err(|_| ClientError::IncorrectCredentials)?
+        };
+
+        let transaction_hash = self
+            .client()
             .send_raw_tx(signed_tx.raw_tx)
             .await
             .map_err(|err| ClientError::NetworkError(err.to_string()))?;

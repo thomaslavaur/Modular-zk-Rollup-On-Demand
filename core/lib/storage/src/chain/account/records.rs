@@ -21,6 +21,7 @@ pub(crate) struct StorageAccountCreation {
     pub address: Vec<u8>,
     pub nonce: i64,
     pub update_order_id: i32,
+    pub autorised: bool,
 }
 
 #[derive(Debug, FromRow)]

@@ -91,6 +91,10 @@ impl NewExecutedPriorityOperation {
                 let eth_address = full_exit.priority_op.eth_address;
                 (eth_address, eth_address)
             }
+            ZkSyncOp::FullChangeGroup(full_change_group) => {
+                let eth_address = full_change_group.priority_op.eth_address;
+                (eth_address, eth_address)
+            }
             _ => panic!(
                 "Incorrect type of priority op: {:?}",
                 exec_prior_op.priority_op
@@ -149,7 +153,10 @@ impl NewExecutedTransaction {
 
         let (from_account_hex, to_account_hex): (String, Option<String>) =
             match exec_tx.signed_tx.tx {
-                ZkSyncTx::Withdraw(_) | ZkSyncTx::Transfer(_) | ZkSyncTx::WithdrawNFT(_) => (
+                ZkSyncTx::Withdraw(_)
+                | ZkSyncTx::Transfer(_)
+                | ZkSyncTx::WithdrawNFT(_)
+                | ZkSyncTx::ChangeGroup(_) => (
                     serde_json::from_value(tx["from"].clone()).unwrap(),
                     serde_json::from_value(tx["to"].clone()).unwrap(),
                 ),

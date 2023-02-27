@@ -225,6 +225,9 @@ impl ZkSyncState {
             ZkSyncPriorityOp::FullExit(op) => self
                 .apply_tx(op)
                 .expect("Priority operation execution failed"),
+            ZkSyncPriorityOp::FullChangeGroup(op) => self
+                .apply_tx(op)
+                .expect("Priority operation execution failed"),
         }
     }
 
@@ -344,6 +347,7 @@ impl ZkSyncState {
             ZkSyncTx::Swap(tx) => Ok(self.apply_tx(*tx)?),
             ZkSyncTx::MintNFT(tx) => Ok(self.apply_tx(*tx)?),
             ZkSyncTx::WithdrawNFT(tx) => Ok(self.apply_tx(*tx)?),
+            ZkSyncTx::ChangeGroup(tx) => Ok(self.apply_tx(*tx)?),
         }
     }
 
@@ -433,6 +437,7 @@ impl ZkSyncState {
             ZkSyncTx::Swap(tx) => Into::into(self.create_op(*tx)?),
             ZkSyncTx::MintNFT(tx) => Into::into(self.create_op(*tx)?),
             ZkSyncTx::WithdrawNFT(tx) => Into::into(self.create_op(*tx)?),
+            ZkSyncTx::ChangeGroup(tx) => Into::into(self.create_op(*tx)?),
         })
     }
 
@@ -441,6 +446,7 @@ impl ZkSyncState {
         match op {
             ZkSyncPriorityOp::Deposit(op) => self.create_op(op).unwrap().into(),
             ZkSyncPriorityOp::FullExit(op) => self.create_op(op).unwrap().into(),
+            ZkSyncPriorityOp::FullChangeGroup(op) => self.create_op(op).unwrap().into(),
         }
     }
 

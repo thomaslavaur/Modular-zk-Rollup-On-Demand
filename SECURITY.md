@@ -1,4 +1,3 @@
-# Security Policy / Bug Bounty Program
+# Security 
 
-The description of the Security Policy and the Bug Bounty program can be read
-[here](https://zksync.io/dev/bug-bounty.html)
+This code has not been audited,  **it likely contains security vulnerabilities and must not be used** in production. This code is only intended to support a scientific paper and to measure our proposal available here (to be done).

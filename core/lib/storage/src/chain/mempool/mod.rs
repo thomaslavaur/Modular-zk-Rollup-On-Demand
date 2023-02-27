@@ -433,6 +433,10 @@ impl<'a, 'c> MempoolSchema<'a, 'c> {
                     fe.eth_address.as_bytes().to_vec(),
                     fe.eth_address.as_bytes().to_vec(),
                 ),
+                ZkSyncPriorityOp::FullChangeGroup(fcg) => (
+                    fcg.eth_address.as_bytes().to_vec(),
+                    fcg.eth_address.as_bytes().to_vec(),
+                ),
             };
 
             sqlx::query!(

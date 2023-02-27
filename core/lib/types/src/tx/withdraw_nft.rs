@@ -10,11 +10,11 @@ use zksync_crypto::{
     },
 };
 
-use zksync_utils::{format_units, BigUintSerdeAsRadix10Str};
+use zksync_utils::{format_units, parse_env, BigUintSerdeAsRadix10Str};
 
 use super::{TimeRange, TxSignature, VerifiedSignatureCache};
 use crate::tx::error::{
-    FEE_AMOUNT_IS_NOT_PACKABLE, WRONG_ACCOUNT_ID, WRONG_FEE_ERROR, WRONG_SIGNATURE,
+    FEE_AMOUNT_IS_NOT_PACKABLE, WRONG_ACCOUNT_ID, WRONG_FEE_ERROR, WRONG_GROUP, WRONG_SIGNATURE,
     WRONG_TIME_RANGE, WRONG_TOKEN, WRONG_TOKEN_FOR_PAYING_FEE,
 };
 use crate::tx::version::TxVersion;
@@ -41,6 +41,8 @@ pub struct WithdrawNFT {
     /// Fee for the transaction.
     #[serde(with = "BigUintSerdeAsRadix10Str")]
     pub fee: BigUint,
+    /// Group ID
+    pub group: u16,
     /// Current account nonce.
     pub nonce: Nonce,
     /// Transaction zkSync signature.
@@ -74,6 +76,7 @@ impl WithdrawNFT {
         token: TokenId,
         fee_token: TokenId,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         signature: Option<TxSignature>,
@@ -85,6 +88,7 @@ impl WithdrawNFT {
             token,
             fee_token,
             fee,
+            group,
             nonce,
             signature: signature.clone().unwrap_or_default(),
             cached_signer: VerifiedSignatureCache::NotCached,
@@ -107,33 +111,30 @@ impl WithdrawNFT {
         token: TokenId,
         fee_token: TokenId,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         private_key: &PrivateKey<Engine>,
     ) -> Result<Self, TransactionError> {
         let mut tx = Self::new(
-            account_id, from, to, token, fee_token, fee, nonce, time_range, None,
+            account_id, from, to, token, fee_token, fee, group, nonce, time_range, None,
         );
         tx.signature = TxSignature::sign_musig(private_key, &tx.get_bytes());
         tx.check_correctness()?;
         Ok(tx)
     }
 
-    /// Encodes the transaction data as the byte sequence according to the zkSync protocol.
     pub fn get_bytes(&self) -> Vec<u8> {
-        self.get_bytes_with_version(CURRENT_TX_VERSION)
-    }
-
-    pub fn get_bytes_with_version(&self, version: u8) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&[255u8 - Self::TX_TYPE]);
-        out.extend_from_slice(&[version]);
+        out.extend_from_slice(&[CURRENT_TX_VERSION]);
         out.extend_from_slice(&self.account_id.to_be_bytes());
         out.extend_from_slice(self.from.as_bytes());
         out.extend_from_slice(self.to.as_bytes());
         out.extend_from_slice(&self.token.to_be_bytes());
         out.extend_from_slice(&self.fee_token.to_be_bytes());
         out.extend_from_slice(&pack_fee_amount(&self.fee));
+        out.extend_from_slice(&self.group.to_be_bytes());
         out.extend_from_slice(&self.nonce.to_be_bytes());
         out.extend_from_slice(&self.time_range.as_be_bytes());
         out
@@ -155,9 +156,10 @@ impl WithdrawNFT {
     /// batch message.
     pub fn get_ethereum_sign_message_part(&self, fee_token_symbol: &str, decimals: u8) -> String {
         let mut message = format!(
-            "WithdrawNFT {token} to: {to:?}",
+            "WithdrawNFT {token} to: {to:?} on group: {group}",
             token = self.token.0,
-            to = self.to
+            to = self.to,
+            group = self.group
         );
         if !self.fee.is_zero() {
             if !message.is_empty() {
@@ -198,6 +200,7 @@ impl WithdrawNFT {
     /// - `fee` field must represent a packable value.
     /// - zkSync signature must correspond to the PubKeyHash of the account.
     pub fn check_correctness(&mut self) -> Result<(), TransactionError> {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         if self.fee > BigUint::from(u128::MAX) {
             return Err(TransactionError::WrongFee);
         }
@@ -211,7 +214,9 @@ impl WithdrawNFT {
         if self.account_id > max_account_id() {
             return Err(TransactionError::WrongAccountId);
         }
-
+        if self.group != server_group_id {
+            return Err(TransactionError::WrongGroup);
+        }
         if !self.time_range.check_correctness() {
             return Err(TransactionError::WrongTimeRange);
         }
@@ -239,6 +244,7 @@ pub enum TransactionError {
     WrongTimeRange,
     WrongSignature,
     WrongFeeToken,
+    WrongGroup,
 }
 
 impl Display for TransactionError {
@@ -251,6 +257,7 @@ impl Display for TransactionError {
             TransactionError::WrongTimeRange => WRONG_TIME_RANGE,
             TransactionError::WrongSignature => WRONG_SIGNATURE,
             TransactionError::WrongFeeToken => WRONG_TOKEN_FOR_PAYING_FEE,
+            TransactionError::WrongGroup => WRONG_GROUP,
         };
         write!(f, "{}", error)
     }

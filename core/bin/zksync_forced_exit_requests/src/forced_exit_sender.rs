@@ -84,12 +84,14 @@ impl<T: CoreInteractionWrapper> MempoolForcedExitSender<T> {
         nonce: Nonce,
         target: Address,
         token: TokenId,
+        group: u16,
     ) -> SignedZkSyncTx {
         let tx = ForcedExit::new_signed(
             self.forced_exit_sender_account_id,
             target,
             token,
             BigUint::from(0u32),
+            group,
             nonce,
             TimeRange::default(),
             &self.sender_private_key,
@@ -117,7 +119,12 @@ impl<T: CoreInteractionWrapper> MempoolForcedExitSender<T> {
         let mut transactions: Vec<SignedZkSyncTx> = vec![];
 
         for token in fe_request.tokens.into_iter() {
-            transactions.push(self.build_forced_exit(sender_nonce, fe_request.target, token));
+            transactions.push(self.build_forced_exit(
+                sender_nonce,
+                fe_request.target,
+                token,
+                fe_request.group,
+            ));
             sender_nonce.add_assign(1);
         }
 

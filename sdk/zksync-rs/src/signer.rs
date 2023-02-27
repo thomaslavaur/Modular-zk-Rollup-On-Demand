@@ -10,8 +10,8 @@ use zksync_types::{
         ChangePubKey, ChangePubKeyECDSAData, ChangePubKeyEthAuthData, PackedEthSignature,
         TimeRange, TxEthSignature,
     },
-    AccountId, Address, ForcedExit, MintNFT, Nonce, PubKeyHash, Token, TokenId, Transfer, Withdraw,
-    WithdrawNFT, H256,
+    AccountId, Address, ChangeGroup, ForcedExit, MintNFT, Nonce, Order, PubKeyHash, Swap, Token,
+    TokenId, Transfer, Withdraw, WithdrawNFT, H256,
 };
 // Local imports
 use crate::WalletCredentials;
@@ -81,6 +81,7 @@ impl<S: EthereumSigner> Signer<S> {
         auth_onchain: bool,
         fee_token: Token,
         fee: BigUint,
+        group: u16,
         time_range: TimeRange,
     ) -> Result<ChangePubKey, SignerError> {
         let account_id = self.account_id.ok_or(SignerError::NoSigningKey)?;
@@ -91,6 +92,7 @@ impl<S: EthereumSigner> Signer<S> {
             self.pubkey_hash,
             fee_token.id,
             fee,
+            group,
             nonce,
             time_range,
             None,
@@ -137,12 +139,104 @@ impl<S: EthereumSigner> Signer<S> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub async fn sign_order(
+        &self,
+        recipient: Address,
+        group: u16,
+        nonce: Nonce,
+        token_sell: Token,
+        token_buy: Token,
+        prices: (BigUint, BigUint),
+        amount: BigUint,
+        time_range: TimeRange,
+    ) -> Result<(Order, Option<PackedEthSignature>), SignerError> {
+        let account_id = self.account_id.ok_or(SignerError::NoSigningKey)?;
+
+        let order = Order::new_signed(
+            account_id,
+            recipient,
+            group,
+            nonce,
+            token_sell.id,
+            token_buy.id,
+            prices,
+            amount,
+            time_range,
+            &self.private_key,
+        )
+        .map_err(signing_failed_error)?;
+
+        let eth_signature = match &self.eth_signer {
+            Some(signer) => {
+                let message = order.get_ethereum_sign_message(
+                    &token_sell.symbol,
+                    &token_buy.symbol,
+                    token_sell.decimals,
+                );
+                let signature = signer.sign_message(message.as_bytes()).await?;
+
+                if let TxEthSignature::EthereumSignature(packed_signature) = signature {
+                    Some(packed_signature)
+                } else {
+                    return Err(SignerError::MissingEthSigner);
+                }
+            }
+            _ => None,
+        };
+
+        Ok((order, eth_signature))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn sign_swap(
+        &self,
+        group: u16,
+        nonce: Nonce,
+        orders: (Order, Order),
+        amounts: (BigUint, BigUint),
+        fee: BigUint,
+        fee_token: Token,
+    ) -> Result<(Swap, Option<PackedEthSignature>), SignerError> {
+        let account_id = self.account_id.ok_or(SignerError::NoSigningKey)?;
+
+        let swap = Swap::new_signed(
+            account_id,
+            self.address,
+            group,
+            nonce,
+            orders,
+            amounts,
+            fee,
+            fee_token.id,
+            &self.private_key,
+        )
+        .map_err(signing_failed_error)?;
+
+        let eth_signature = match &self.eth_signer {
+            Some(signer) => {
+                let message = swap.get_ethereum_sign_message(&fee_token.symbol, fee_token.decimals);
+                let signature = signer.sign_message(message.as_bytes()).await?;
+
+                if let TxEthSignature::EthereumSignature(packed_signature) = signature {
+                    Some(packed_signature)
+                } else {
+                    return Err(SignerError::MissingEthSigner);
+                }
+            }
+            _ => None,
+        };
+
+        Ok((swap, eth_signature))
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub async fn sign_transfer(
         &self,
         token: Token,
         amount: BigUint,
         fee: BigUint,
         to: Address,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
     ) -> Result<(Transfer, Option<PackedEthSignature>), SignerError> {
@@ -155,6 +249,7 @@ impl<S: EthereumSigner> Signer<S> {
             token.id,
             amount,
             fee,
+            group,
             nonce,
             time_range,
             &self.private_key,
@@ -184,6 +279,7 @@ impl<S: EthereumSigner> Signer<S> {
         amount: BigUint,
         fee: BigUint,
         eth_address: Address,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
     ) -> Result<(Withdraw, Option<PackedEthSignature>), SignerError> {
@@ -196,6 +292,7 @@ impl<S: EthereumSigner> Signer<S> {
             token.id,
             amount,
             fee,
+            group,
             nonce,
             time_range,
             &self.private_key,
@@ -224,6 +321,7 @@ impl<S: EthereumSigner> Signer<S> {
         target: Address,
         token: Token,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
     ) -> Result<(ForcedExit, Option<PackedEthSignature>), SignerError> {
@@ -234,6 +332,7 @@ impl<S: EthereumSigner> Signer<S> {
             target,
             token.id,
             fee,
+            group,
             nonce,
             time_range,
             &self.private_key,
@@ -263,6 +362,7 @@ impl<S: EthereumSigner> Signer<S> {
         content_hash: H256,
         fee_token: Token,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
     ) -> Result<(MintNFT, Option<PackedEthSignature>), SignerError> {
         let account_id = self.account_id.ok_or(SignerError::NoSigningKey)?;
@@ -274,6 +374,7 @@ impl<S: EthereumSigner> Signer<S> {
             recipient,
             fee,
             fee_token.id,
+            group,
             nonce,
             &self.private_key,
         )
@@ -303,6 +404,7 @@ impl<S: EthereumSigner> Signer<S> {
         token: TokenId,
         fee_token: Token,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
     ) -> Result<(WithdrawNFT, Option<PackedEthSignature>), SignerError> {
@@ -315,6 +417,7 @@ impl<S: EthereumSigner> Signer<S> {
             token,
             fee_token.id,
             fee,
+            group,
             nonce,
             time_range,
             &self.private_key,
@@ -337,5 +440,50 @@ impl<S: EthereumSigner> Signer<S> {
         };
 
         Ok((withdraw_nft, eth_signature))
+    }
+
+    pub async fn sign_change_group(
+        &self,
+        token: Token,
+        amount: BigUint,
+        fee: BigUint,
+        eth_address: Address,
+        group1: u16,
+        group2: u16,
+        nonce: Nonce,
+        time_range: TimeRange,
+    ) -> Result<(ChangeGroup, Option<PackedEthSignature>), SignerError> {
+        let account_id = self.account_id.ok_or(SignerError::NoSigningKey)?;
+
+        let change_group = ChangeGroup::new_signed(
+            account_id,
+            self.address,
+            eth_address,
+            token.id,
+            amount,
+            fee,
+            group1,
+            group2,
+            nonce,
+            time_range,
+            &self.private_key,
+        )
+        .map_err(signing_failed_error)?;
+
+        let eth_signature = match &self.eth_signer {
+            Some(signer) => {
+                let message = change_group.get_ethereum_sign_message(&token.symbol, token.decimals);
+                let signature = signer.sign_message(message.as_bytes()).await?;
+
+                if let TxEthSignature::EthereumSignature(packed_signature) = signature {
+                    Some(packed_signature)
+                } else {
+                    return Err(SignerError::MissingEthSigner);
+                }
+            }
+            _ => None,
+        };
+
+        Ok((change_group, eth_signature))
     }
 }

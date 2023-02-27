@@ -5,6 +5,7 @@ use crate::{
 };
 use num::{BigUint, FromPrimitive, ToPrimitive};
 use serde::{Deserialize, Serialize};
+use zksync_crypto::params::GROUP_LEN;
 use zksync_crypto::{
     params::{
         ACCOUNT_ID_BIT_WIDTH, BALANCE_BIT_WIDTH, CHUNK_BYTES, ETH_ADDRESS_BIT_WIDTH,
@@ -45,6 +46,7 @@ impl ForcedExitOp {
         data.extend_from_slice(&self.amount().to_be_bytes());
         data.extend_from_slice(&pack_fee_amount(&self.tx.fee));
         data.extend_from_slice(self.tx.target.as_bytes());
+        data.extend_from_slice(&self.tx.group.to_be_bytes());
         data.resize(Self::CHUNKS * CHUNK_BYTES, 0x00);
         data
     }
@@ -81,6 +83,7 @@ impl ForcedExitOp {
         let fee_offset = amount_offset + BALANCE_BIT_WIDTH / 8;
         let eth_address_offset = fee_offset + (FEE_EXPONENT_BIT_WIDTH + FEE_MANTISSA_BIT_WIDTH) / 8;
         let eth_address_end = eth_address_offset + ETH_ADDRESS_BIT_WIDTH / 8;
+        let group_offset = eth_address_end;
 
         let initiator_account_id =
             u32::from_bytes(&bytes[initiator_account_id_offset..target_account_id_offset])
@@ -97,7 +100,8 @@ impl ForcedExitOp {
         let fee = unpack_fee_amount(&bytes[fee_offset..eth_address_offset])
             .ok_or(ForcedExitOpError::CannotGetFee)?;
         let target = Address::from_slice(&bytes[eth_address_offset..eth_address_end]);
-
+        let group = u16::from_bytes(&bytes[group_offset..group_offset + GROUP_LEN])
+            .ok_or(ForcedExitOpError::CannotGetGroupId)?;
         let nonce = 0; // From pubdata it is unknown
         let time_range = Default::default();
 
@@ -107,6 +111,7 @@ impl ForcedExitOp {
                 target,
                 TokenId(token),
                 fee,
+                group,
                 Nonce(nonce),
                 time_range,
                 None,

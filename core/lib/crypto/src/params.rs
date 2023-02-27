@@ -175,7 +175,7 @@ pub const LEAF_DATA_BIT_WIDTH: usize =
 /// Priority op should be executed for this number of eth blocks.
 pub const PRIORITY_EXPIRATION: u64 = 35000; // TODO: Check that in the future this constant cannot cause unexpected behavior (ZKS-520).
 pub const FR_ADDRESS_LEN: usize = 20;
-
+pub const GROUP_LEN: usize = 2;
 pub const PAD_MSG_BEFORE_HASH_BITS_LEN: usize = 736;
 
 /// Size of the data that is signed for withdraw tx
@@ -187,6 +187,7 @@ pub const SIGNED_WITHDRAW_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + BALANCE_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
+    + GROUP_LEN * 8
     + NONCE_BIT_WIDTH
     + 2 * TIMESTAMP_BIT_WIDTH;
 
@@ -222,6 +223,7 @@ pub const SIGNED_TRANSFER_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
     + NONCE_BIT_WIDTH
+    + GROUP_LEN * 8
     + 2 * TIMESTAMP_BIT_WIDTH;
 
 /// Size of the data that is signed for transfer tx, without timestamps, and with 2-byte token representation
@@ -233,7 +235,8 @@ pub const OLD1_SIGNED_TRANSFER_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + AMOUNT_MANTISSA_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
-    + NONCE_BIT_WIDTH;
+    + NONCE_BIT_WIDTH
+    + GROUP_LEN * 8;
 
 /// Size of the data that is signed for transfer tx, with timestamps, but with 2-byte token representation
 pub const OLD2_SIGNED_TRANSFER_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
@@ -245,6 +248,7 @@ pub const OLD2_SIGNED_TRANSFER_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
     + NONCE_BIT_WIDTH
+    + GROUP_LEN * 8
     + 2 * TIMESTAMP_BIT_WIDTH;
 
 /// Size of the data that is signed for forced exit tx
@@ -256,6 +260,7 @@ pub const SIGNED_FORCED_EXIT_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
     + NONCE_BIT_WIDTH
+    + GROUP_LEN * 8
     + 2 * TIMESTAMP_BIT_WIDTH;
 
 /// Size of the data that is signed for forced exit tx with 2-byte token representation
@@ -266,6 +271,7 @@ pub const OLD_SIGNED_FORCED_EXIT_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
     + NONCE_BIT_WIDTH
+    + GROUP_LEN * 8
     + 2 * TIMESTAMP_BIT_WIDTH;
 
 /// Size of the data that is signed for mint nft tx
@@ -278,6 +284,7 @@ pub const SIGNED_MINT_NFT_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + TOKEN_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
+    + GROUP_LEN * 8
     + NONCE_BIT_WIDTH;
 
 /// Size of the data that is signed for withdraw nft tx
@@ -291,6 +298,7 @@ pub const SIGNED_WITHDRAW_NFT_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
     + NONCE_BIT_WIDTH
+    + GROUP_LEN * 8
     + 2 * TIMESTAMP_BIT_WIDTH;
 
 /// Size of the data that is signed for change pubkey tx
@@ -302,6 +310,7 @@ pub const SIGNED_CHANGE_PUBKEY_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + TOKEN_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
+    + GROUP_LEN * 8
     + NONCE_BIT_WIDTH
     + 2 * TIMESTAMP_BIT_WIDTH;
 
@@ -313,6 +322,7 @@ pub const OLD1_SIGNED_CHANGE_PUBKEY_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + LEGACY_TOKEN_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
+    + GROUP_LEN * 8
     + NONCE_BIT_WIDTH;
 
 /// Size of the data that is signed for change pubkey tx, with timestamps, but with 2-byte token representation
@@ -323,6 +333,19 @@ pub const OLD2_SIGNED_CHANGE_PUBKEY_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
     + LEGACY_TOKEN_BIT_WIDTH
     + FEE_EXPONENT_BIT_WIDTH
     + FEE_MANTISSA_BIT_WIDTH
+    + GROUP_LEN * 8
+    + NONCE_BIT_WIDTH
+    + 2 * TIMESTAMP_BIT_WIDTH;
+
+/// Size of the data that is signed for withdraw tx
+pub const SIGNED_CHANGE_GROUP_BIT_WIDTH: usize = TX_TYPE_BIT_WIDTH
+    + ACCOUNT_ID_BIT_WIDTH
+    + 2 * ADDRESS_WIDTH
+    + TOKEN_BIT_WIDTH
+    + BALANCE_BIT_WIDTH
+    + FEE_EXPONENT_BIT_WIDTH
+    + FEE_MANTISSA_BIT_WIDTH
+    + GROUP_LEN * 8 * 2
     + NONCE_BIT_WIDTH
     + 2 * TIMESTAMP_BIT_WIDTH;
 
@@ -332,7 +355,7 @@ pub const RECURSIVE_CIRCUIT_NUM_INPUTS: usize = 1;
 pub const RECURSIVE_CIRCUIT_VK_TREE_DEPTH: usize = 3;
 
 /// Major version of the ZkSync
-pub const ZKSYNC_VERSION: &str = "contracts-6";
+pub const ZKSYNC_VERSION: &str = "contracts-9";
 
 lazy_static! {
     pub static ref JUBJUB_PARAMS: AltJubjubBn256 = AltJubjubBn256::new();

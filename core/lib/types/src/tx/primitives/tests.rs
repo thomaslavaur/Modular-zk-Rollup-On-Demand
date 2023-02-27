@@ -41,6 +41,7 @@ fn get_change_pub_key() -> ChangePubKey {
         Default::default(),
         TokenId(0),
         Default::default(),
+        Default::default(),
         Nonce(13),
         Default::default(),
         None,

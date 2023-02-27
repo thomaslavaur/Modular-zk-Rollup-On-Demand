@@ -9,10 +9,21 @@ import "../AdditionalZkSync.sol";
 
 contract ZkSyncRegenesisTest is ZkSync {
     function getStoredBlockHash() external view returns (bytes32) {
-        require(totalBlocksCommitted == totalBlocksProven, "wq1"); // All the blocks must be processed
-        require(totalBlocksCommitted == totalBlocksExecuted, "w12"); // All the blocks must be processed
+        require(
+            uint_to_group[address_to_int[msg.sender]].totalBlocksCommitted ==
+                uint_to_group[address_to_int[msg.sender]].totalBlocksProven,
+            "wq1"
+        ); // All the blocks must be processed
+        require(
+            uint_to_group[address_to_int[msg.sender]].totalBlocksCommitted ==
+                uint_to_group[address_to_int[msg.sender]].totalBlocksExecuted,
+            "w12"
+        ); // All the blocks must be processed
 
-        return storedBlockHashes[totalBlocksExecuted];
+        return
+            uint_to_group[address_to_int[msg.sender]].storedBlockHashes[
+                uint_to_group[address_to_int[msg.sender]].totalBlocksExecuted
+            ];
     }
 
     function getAdditionalZkSync() external view returns (AdditionalZkSync) {

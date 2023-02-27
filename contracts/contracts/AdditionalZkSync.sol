@@ -25,6 +25,8 @@ contract AdditionalZkSync is Storage, Config, Events, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeMathUInt128 for uint128;
 
+    bytes32 private constant EMPTY_STRING_KECCAK = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
+
     function increaseBalanceToWithdraw(bytes22 _packedBalanceKey, uint128 _amount) internal {
         uint128 balance = pendingBalances[_packedBalanceKey].balanceToWithdraw;
         pendingBalances[_packedBalanceKey] = PendingBalance(balance.add(_amount), FILLED_GAS_RESERVE_VALUE);
@@ -43,6 +45,7 @@ contract AdditionalZkSync is Storage, Config, Events, ReentrancyGuard {
         uint32 _accountId,
         uint32 _tokenId,
         uint128 _amount,
+        uint16 _group_id,
         uint32 _nftCreatorAccountId,
         address _nftCreatorAddress,
         uint32 _nftSerialId,
@@ -53,11 +56,15 @@ contract AdditionalZkSync is Storage, Config, Events, ReentrancyGuard {
         require(_accountId != SPECIAL_ACCOUNT_ID, "v");
         require(_tokenId < SPECIAL_NFT_TOKEN_ID, "T");
 
-        require(exodusMode, "s"); // must be in exodus mode
-        require(!performedExodus[_accountId][_tokenId], "t"); // already exited
-        require(storedBlockHashes[totalBlocksExecuted] == hashStoredBlockInfo(_storedBlockInfo), "u"); // incorrect stored block info
+        require(uint_to_group[_group_id].exodusMode, "s"); // must be in exodus mode
+        require(!uint_to_group[_group_id].performedExodus[_accountId][_tokenId], "t"); // already exited
+        require(
+            uint_to_group[_group_id].storedBlockHashes[uint_to_group[_group_id].totalBlocksExecuted] ==
+                hashStoredBlockInfo(_storedBlockInfo),
+            "u"
+        ); // incorrect stored block info
 
-        bool proofCorrect = verifier.verifyExitProof(
+        bool proofCorrect = uint_to_group[_group_id].verifier.verifyExitProof(
             _storedBlockInfo.stateHash,
             _accountId,
             _owner,
@@ -88,28 +95,40 @@ contract AdditionalZkSync is Storage, Config, Events, ReentrancyGuard {
             pendingWithdrawnNFTs[_tokenId] = withdrawNftOp;
             emit WithdrawalNFTPending(_tokenId);
         }
-        performedExodus[_accountId][_tokenId] = true;
+        uint_to_group[_group_id].performedExodus[_accountId][_tokenId] = true;
     }
 
-    function cancelOutstandingDepositsForExodusMode(uint64 _n, bytes[] calldata _depositsPubdata) external {
-        require(exodusMode, "8"); // exodus mode not active
-        uint64 toProcess = Utils.minU64(totalOpenPriorityRequests, _n);
+    function cancelOutstandingDepositsForExodusMode(
+        uint64 _n,
+        uint16 _group_id,
+        bytes[] calldata _depositsPubdata
+    ) external {
+        require(uint_to_group[_group_id].exodusMode, "8"); // exodus mode not active
+        uint64 toProcess = Utils.minU64(uint_to_group[_group_id].totalOpenPriorityRequests, _n);
         require(toProcess > 0, "9"); // no deposits to process
         uint64 currentDepositIdx = 0;
-        for (uint64 id = firstPriorityRequestId; id < firstPriorityRequestId + toProcess; ++id) {
-            if (priorityRequests[id].opType == Operations.OpType.Deposit) {
+        for (
+            uint64 id = uint_to_group[_group_id].firstPriorityRequestId;
+            id < uint_to_group[_group_id].firstPriorityRequestId + toProcess;
+            ++id
+        ) {
+            if (uint_to_group[_group_id].priorityRequests[id].opType == Operations.OpType.Deposit) {
                 bytes memory depositPubdata = _depositsPubdata[currentDepositIdx];
-                require(Utils.hashBytesToBytes20(depositPubdata) == priorityRequests[id].hashedPubData, "a");
+                require(
+                    Utils.hashBytesToBytes20(depositPubdata) ==
+                        uint_to_group[address_to_int[msg.sender]].priorityRequests[id].hashedPubData,
+                    "a"
+                );
                 ++currentDepositIdx;
 
                 Operations.Deposit memory op = Operations.readDepositPubdata(depositPubdata);
                 bytes22 packedBalanceKey = packAddressAndTokenId(op.owner, uint16(op.tokenId));
                 pendingBalances[packedBalanceKey].balanceToWithdraw += op.amount;
             }
-            delete priorityRequests[id];
+            delete uint_to_group[_group_id].priorityRequests[id];
         }
-        firstPriorityRequestId += toProcess;
-        totalOpenPriorityRequests -= toProcess;
+        uint_to_group[_group_id].firstPriorityRequestId += toProcess;
+        uint_to_group[_group_id].totalOpenPriorityRequests -= toProcess;
     }
 
     uint256 internal constant SECURITY_COUNCIL_THRESHOLD = $$(SECURITY_COUNCIL_THRESHOLD);
@@ -203,8 +222,12 @@ contract AdditionalZkSync is Storage, Config, Events, ReentrancyGuard {
     ///         2) After `AUTH_FACT_RESET_TIMELOCK` time is passed second `setAuthPubkeyHash` transaction will reset pubkey hash for `_nonce`.
     /// @param _pubkeyHash New pubkey hash
     /// @param _nonce Nonce of the change pubkey L2 transaction
-    function setAuthPubkeyHash(bytes calldata _pubkeyHash, uint32 _nonce) external {
-        requireActive();
+    function setAuthPubkeyHash(
+        bytes calldata _pubkeyHash,
+        uint16 _group_id,
+        uint32 _nonce
+    ) external {
+        requireActive(_group_id);
 
         require(_pubkeyHash.length == PUBKEY_HASH_BYTES, "y"); // PubKeyHash should be 20 bytes.
         if (authFacts[msg.sender][_nonce] == bytes32(0)) {
@@ -223,30 +246,98 @@ contract AdditionalZkSync is Storage, Config, Events, ReentrancyGuard {
 
     /// @notice Reverts unverified blocks
     function revertBlocks(StoredBlockInfo[] calldata _blocksToRevert) external {
-        requireActive();
+        requireActive(address_to_int[msg.sender]);
 
-        governance.requireActiveValidator(msg.sender);
+        governance.requireActiveValidator(msg.sender, address_to_int[msg.sender]);
 
-        uint32 blocksCommitted = totalBlocksCommitted;
-        uint32 blocksToRevert = Utils.minU32(uint32(_blocksToRevert.length), blocksCommitted - totalBlocksExecuted);
+        uint32 blocksCommitted = uint_to_group[address_to_int[msg.sender]].totalBlocksCommitted;
+        uint32 blocksToRevert = Utils.minU32(
+            uint32(_blocksToRevert.length),
+            blocksCommitted - uint_to_group[address_to_int[msg.sender]].totalBlocksExecuted
+        );
         uint64 revertedPriorityRequests = 0;
 
         for (uint32 i = 0; i < blocksToRevert; ++i) {
             StoredBlockInfo memory storedBlockInfo = _blocksToRevert[i];
-            require(storedBlockHashes[blocksCommitted] == hashStoredBlockInfo(storedBlockInfo), "r"); // incorrect stored block info
+            require(
+                uint_to_group[address_to_int[msg.sender]].storedBlockHashes[blocksCommitted] ==
+                    hashStoredBlockInfo(storedBlockInfo),
+                "r"
+            ); // incorrect stored block info
 
-            delete storedBlockHashes[blocksCommitted];
+            delete uint_to_group[address_to_int[msg.sender]].storedBlockHashes[blocksCommitted];
 
             --blocksCommitted;
             revertedPriorityRequests += storedBlockInfo.priorityOperations;
         }
 
-        totalBlocksCommitted = blocksCommitted;
-        totalCommittedPriorityRequests -= revertedPriorityRequests;
-        if (totalBlocksCommitted < totalBlocksProven) {
-            totalBlocksProven = totalBlocksCommitted;
+        uint_to_group[address_to_int[msg.sender]].totalBlocksCommitted = blocksCommitted;
+        uint_to_group[address_to_int[msg.sender]].totalCommittedPriorityRequests -= revertedPriorityRequests;
+        if (
+            uint_to_group[address_to_int[msg.sender]].totalBlocksCommitted <
+            uint_to_group[address_to_int[msg.sender]].totalBlocksProven
+        ) {
+            uint_to_group[address_to_int[msg.sender]].totalBlocksProven = uint_to_group[address_to_int[msg.sender]]
+                .totalBlocksCommitted;
         }
 
-        emit BlocksRevert(totalBlocksExecuted, blocksCommitted);
+        emit BlocksRevert(
+            uint_to_group[address_to_int[msg.sender]].totalBlocksExecuted,
+            blocksCommitted,
+            address_to_int[msg.sender]
+        );
+    }
+
+    function startGroup(
+        uint16 _group_id,
+        address _verifierAddress,
+        bool _restricted
+    ) external {
+        bytes32 _genesisStateHash = 0;
+        require(_group_id != 0);
+        require(address_to_int[msg.sender] == 0);
+        Group storage group = uint_to_group[_group_id];
+        require(group.group_id == 0);
+        group.verifier = Verifier(_verifierAddress);
+        address_to_int[msg.sender] = _group_id;
+        governance.setValidator(msg.sender, true, _group_id);
+        group.group_id = _group_id;
+
+        if (_restricted) {
+            group.permissioned = true;
+            group.whitelist[msg.sender] = true;
+        }
+
+        StoredBlockInfo memory storedBlockZero = StoredBlockInfo(
+            0,
+            0,
+            EMPTY_STRING_KECCAK,
+            0,
+            _genesisStateHash,
+            bytes32(0)
+        );
+        group.storedBlockHashes[0] = hashStoredBlockInfo(storedBlockZero);
+
+        approvedUpgradeNoticePeriod = UPGRADE_NOTICE_PERIOD;
+        emit NoticePeriodChange(approvedUpgradeNoticePeriod);
+        emit GroupCreated(_group_id, _restricted);
+    }
+
+    function closeGroup() external {
+        uint16 group_id = address_to_int[msg.sender];
+        require(group_id != 0);
+        Group storage group = uint_to_group[group_id];
+        group.exodusMode = true;
+        emit ExodusMode(group_id);
+        address_to_int[msg.sender] = 0;
+    }
+
+    function manageWhitelist(address _user, bool _add_or_remove) external {
+        uint16 group_id = address_to_int[msg.sender];
+        requireActive(group_id);
+        governance.requireActiveValidator(msg.sender, group_id);
+        Group storage group = uint_to_group[group_id];
+        require(group.permissioned);
+        group.whitelist[_user] = _add_or_remove;
     }
 }

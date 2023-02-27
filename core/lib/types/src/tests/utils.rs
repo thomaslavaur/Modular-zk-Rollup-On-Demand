@@ -70,6 +70,8 @@ pub fn create_change_pubkey_tx() -> ExecutedOperations {
             Default::default(),
             Default::default(),
             Default::default(),
+            Default::default(),
+            Default::default(),
             None,
             None,
         ),

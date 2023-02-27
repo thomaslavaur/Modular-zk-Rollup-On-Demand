@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::tx::{
-    change_pubkey, close, forced_exit, mint_nft, swap, transfer, withdraw, withdraw_nft,
+    change_group, change_pubkey, close, forced_exit, mint_nft, swap, transfer, withdraw,
+    withdraw_nft,
 };
 #[derive(Debug, Error, PartialEq)]
 pub enum ChangePubkeySignedDataError {
@@ -57,6 +58,9 @@ pub enum TxAddError {
 
     #[error("Too many Ethereum signatures provided")]
     EthSignaturesLimitExceeded,
+
+    #[error("User is not allowed to send to this group")]
+    UserNotWhitelisted,
 }
 
 #[derive(Error, Debug, Copy, Clone, Serialize, Deserialize)]
@@ -79,6 +83,8 @@ pub enum TransactionError {
     ForcedExitError(#[from] forced_exit::TransactionError),
     #[error(transparent)]
     CloseError(#[from] close::TransactionError),
+    #[error(transparent)]
+    ChangeGroupError(#[from] change_group::TransactionError),
 }
 
 pub const WRONG_AMOUNT_ERROR: &str = "Specified amount is greater than maximum supported amount";
@@ -92,3 +98,6 @@ pub const WRONG_TOKEN_FOR_PAYING_FEE: &str = "Specified token is not supported f
 pub const WRONG_SIGNATURE: &str = "L2 signature is incorrect";
 pub const WRONG_TO_ADDRESS: &str = "Transfer for specified address is not supported";
 pub const INVALID_AUTH_DATA: &str = "Specified auth data is incorrect";
+pub const WRONG_GROUP: &str = "Specified Group Id is not link to this server";
+pub const SENDER_NOT_WHITELISTED: &str = "You are not whitelisted by the Validator";
+pub const DESTINATION_NOT_WHITELISTED: &str = "The receiver of this transaction is not whitelisted";

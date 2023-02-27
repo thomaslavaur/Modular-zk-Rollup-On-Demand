@@ -715,6 +715,7 @@ async fn pending_block_workflow(mut storage: StorageProcessor<'_>) -> QueryResul
             false,
             TokenId(0),
             Default::default(),
+            1,
             ChangePubKeyType::ECDSA,
             Default::default(),
         );
@@ -747,6 +748,7 @@ async fn pending_block_workflow(mut storage: StorageProcessor<'_>) -> QueryResul
                 1u32.into(),
                 0u32.into(),
                 &to_zksync_account.address,
+                1,
                 None,
                 true,
                 Default::default(),

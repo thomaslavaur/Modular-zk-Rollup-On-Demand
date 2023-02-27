@@ -16,6 +16,7 @@ pub enum RpcErrorCodes {
     EIP1271SignatureVerificationFail = 201,
     IncorrectEthSignature = 202,
     ChangePkNotAuthorized = 203,
+    UserNotWhitelisted = 204,
 
     Other = 300,
     AccountCloseDisabled = 301,
@@ -41,6 +42,7 @@ impl From<TxAddError> for RpcErrorCodes {
             TxAddError::BatchTooBig => Self::Other,
             TxAddError::BatchWithdrawalsOverload => Self::Other,
             TxAddError::EthSignaturesLimitExceeded => Self::Other,
+            TxAddError::UserNotWhitelisted => Self::UserNotWhitelisted,
         }
     }
 }

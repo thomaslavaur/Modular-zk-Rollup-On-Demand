@@ -85,6 +85,14 @@ pub trait Provider {
         eth_signature: Option<PackedEthSignature>,
     ) -> ResponseResult<TxHash>;
 
+    async fn send_swap(
+        &self,
+        tx: ZkSyncTx,
+        eth_signature_swap: Option<PackedEthSignature>,
+        eth_signature_order0: Option<PackedEthSignature>,
+        eth_signature_order1: Option<PackedEthSignature>,
+    ) -> ResponseResult<TxHash>;
+
     /// Submits a batch of transactions to the zkSync network.
     /// Returns the hashes of the created transactions.
     async fn send_txs_batch(
@@ -170,6 +178,22 @@ impl Provider for RpcProvider {
         eth_signature: Option<PackedEthSignature>,
     ) -> ResponseResult<TxHash> {
         let msg = JsonRpcRequest::submit_tx(tx, eth_signature);
+        self.send_and_deserialize(&msg).await
+    }
+
+    async fn send_swap(
+        &self,
+        tx: ZkSyncTx,
+        eth_signature_swap: Option<PackedEthSignature>,
+        eth_signature_order0: Option<PackedEthSignature>,
+        eth_signature_order1: Option<PackedEthSignature>,
+    ) -> ResponseResult<TxHash> {
+        let msg = JsonRpcRequest::submit_swap(
+            tx,
+            eth_signature_swap,
+            eth_signature_order0,
+            eth_signature_order1,
+        );
         self.send_and_deserialize(&msg).await
     }
 
@@ -369,6 +393,23 @@ mod messages {
 
         pub fn submit_tx(tx: ZkSyncTx, eth_signature: Option<PackedEthSignature>) -> Self {
             let params = json_values![tx, eth_signature.map(TxEthSignature::EthereumSignature)];
+            Self::create("tx_submit", params)
+        }
+
+        pub fn submit_swap(
+            tx: ZkSyncTx,
+            eth_signature_swap: Option<PackedEthSignature>,
+            eth_signature_order0: Option<PackedEthSignature>,
+            eth_signature_order1: Option<PackedEthSignature>,
+        ) -> Self {
+            let params = json_values![
+                tx,
+                [
+                    eth_signature_swap.map(TxEthSignature::EthereumSignature),
+                    eth_signature_order0.map(TxEthSignature::EthereumSignature),
+                    eth_signature_order1.map(TxEthSignature::EthereumSignature)
+                ]
+            ];
             Self::create("tx_submit", params)
         }
 

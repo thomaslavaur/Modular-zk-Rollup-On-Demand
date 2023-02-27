@@ -112,7 +112,7 @@ impl AccountLifespan {
             .unwrap_or_else(|_| u128::max_value())
             .into();
         let eth_tx_hash = match ethereum
-            .deposit(self.main_token.id, amount, self.wallet.address())
+            .deposit(self.main_token.id, amount, self.wallet.address(), 1)
             .await
         {
             Ok(hash) => hash,
@@ -145,7 +145,7 @@ impl AccountLifespan {
         };
 
         let ethereum = self.wallet.ethereum(&self.config.web3_url).await?;
-        let eth_tx_hash = match ethereum.full_exit(exit_token_id, account_id).await {
+        let eth_tx_hash = match ethereum.full_exit(exit_token_id, account_id, 1).await {
             Ok(hash) => hash,
             Err(_err) => {
                 // Most likely we don't have enough ETH to perform operations.

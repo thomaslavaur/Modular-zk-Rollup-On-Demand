@@ -97,6 +97,7 @@ impl SwapOp {
 
         let order_a = Order {
             account_id: account_id_0,
+            group: Default::default(),
             nonce,
             recipient_address: Address::zero(), // unknown from pubdata
             // First bit indicates whether this amount is 0 or not.
@@ -110,6 +111,7 @@ impl SwapOp {
 
         let order_b = Order {
             account_id: account_id_1,
+            group: Default::default(),
             nonce,
             recipient_address: Address::zero(), // unknown from pubdata
             // Second bit indicates whether this amount is 0 or not,
@@ -126,6 +128,7 @@ impl SwapOp {
             tx: Swap::new(
                 submitter_id,
                 Default::default(), // Address is unknown from pubdata
+                Default::default(),
                 nonce,
                 (order_a, order_b),
                 (amount_0, amount_1),

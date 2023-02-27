@@ -38,6 +38,7 @@ pub struct TransferData {
     pub token: u32,
     pub from_account_address: u32,
     pub to_account_address: u32,
+    pub group: u16,
     pub valid_from: u64,
     pub valid_until: u64,
 }
@@ -68,6 +69,7 @@ impl Witness for TransferWitness<Bn256> {
             token: *transfer.tx.token as u32,
             from_account_address: *transfer.from,
             to_account_address: *transfer.to,
+            group: transfer.tx.group,
             valid_from: time_range.valid_from,
             valid_until: time_range.valid_until,
         };
@@ -106,6 +108,7 @@ impl Witness for TransferWitness<Bn256> {
             &self.args.fee.unwrap(),
             FEE_MANTISSA_BIT_WIDTH + FEE_EXPONENT_BIT_WIDTH,
         );
+
         resize_grow_only(
             &mut pubdata_bits,
             TransferOp::CHUNKS * CHUNK_BIT_WIDTH,
@@ -173,6 +176,7 @@ impl TransferWitness<Bn256> {
         assert_eq!(capacity, 1 << account_tree_depth());
         let account_address_from_fe = fr_from(transfer.from_account_address);
         let account_address_to_fe = fr_from(transfer.to_account_address);
+        let group = fr_from(transfer.group);
         let token_fe = fr_from(transfer.token);
         let amount_as_field_element = fr_from(transfer.amount);
 
@@ -320,6 +324,7 @@ impl TransferWitness<Bn256> {
                 fee: Some(fee_encoded),
                 a: Some(a),
                 b: Some(b),
+                group: Some(group),
                 valid_from: Some(fr_from(valid_from)),
                 valid_until: Some(fr_from(valid_until)),
                 eth_address: Some(

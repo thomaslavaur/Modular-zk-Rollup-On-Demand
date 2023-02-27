@@ -11,13 +11,16 @@ use zksync_crypto::{
     },
     primitives::rescue_hash_orders,
 };
-use zksync_utils::{format_units, BigUintPairSerdeAsRadix10Str, BigUintSerdeAsRadix10Str};
+use zksync_utils::{
+    format_units, parse_env, BigUintPairSerdeAsRadix10Str, BigUintSerdeAsRadix10Str,
+};
 
 use super::{TxSignature, VerifiedSignatureCache};
 use crate::account::PubKeyHash;
 use crate::tx::error::{
-    AMOUNT_IS_NOT_PACKABLE, FEE_AMOUNT_IS_NOT_PACKABLE, WRONG_ACCOUNT_ID, WRONG_AMOUNT_ERROR,
-    WRONG_FEE_ERROR, WRONG_SIGNATURE, WRONG_TIME_RANGE, WRONG_TOKEN_FOR_PAYING_FEE,
+    AMOUNT_IS_NOT_PACKABLE, DESTINATION_NOT_WHITELISTED, FEE_AMOUNT_IS_NOT_PACKABLE,
+    SENDER_NOT_WHITELISTED, WRONG_ACCOUNT_ID, WRONG_AMOUNT_ERROR, WRONG_FEE_ERROR, WRONG_GROUP,
+    WRONG_SIGNATURE, WRONG_TIME_RANGE, WRONG_TOKEN_FOR_PAYING_FEE,
 };
 use crate::tx::version::TxVersion;
 use crate::Engine;
@@ -35,6 +38,7 @@ pub struct Order {
     pub account_id: AccountId,
     #[serde(rename = "recipient")]
     pub recipient_address: Address,
+    pub group: u16,
     pub nonce: Nonce,
     pub token_buy: TokenId,
     pub token_sell: TokenId,
@@ -53,6 +57,7 @@ pub struct Order {
 pub struct Swap {
     pub submitter_id: AccountId,
     pub submitter_address: Address,
+    pub group: u16,
     pub nonce: Nonce,
     pub orders: (Order, Order),
     #[serde(with = "BigUintPairSerdeAsRadix10Str")]
@@ -69,17 +74,13 @@ impl Order {
     /// Unique identifier of the signed message, similar to TX_TYPE
     pub const MSG_TYPE: u8 = b'o'; // 'o' for "order"
 
-    /// Encodes the transaction data as the byte sequence according to the zkSync protocol.
     pub fn get_bytes(&self) -> Vec<u8> {
-        self.get_bytes_with_version(CURRENT_TX_VERSION)
-    }
-
-    pub fn get_bytes_with_version(&self, version: u8) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&[Self::MSG_TYPE]);
-        out.extend_from_slice(&[version]);
+        out.extend_from_slice(&[CURRENT_TX_VERSION]);
         out.extend_from_slice(&self.account_id.to_be_bytes());
         out.extend_from_slice(self.recipient_address.as_bytes());
+        out.extend_from_slice(&self.group.to_be_bytes());
         out.extend_from_slice(&self.nonce.to_be_bytes());
         out.extend_from_slice(&self.token_sell.to_be_bytes());
         out.extend_from_slice(&self.token_buy.to_be_bytes());
@@ -115,10 +116,12 @@ impl Order {
         message += format!(
             "Ratio: {sell}:{buy}\n\
             Address: {recipient:?}\n\
+            Group: {group}\n
             Nonce: {nonce}",
             sell = self.price.0,
             buy = self.price.1,
             recipient = self.recipient_address,
+            group = self.group,
             nonce = self.nonce
         )
         .as_str();
@@ -129,6 +132,7 @@ impl Order {
     pub fn new_signed(
         account_id: AccountId,
         recipient_address: Address,
+        group: u16,
         nonce: Nonce,
         token_sell: TokenId,
         token_buy: TokenId,
@@ -140,6 +144,7 @@ impl Order {
         let mut tx = Self {
             account_id,
             recipient_address,
+            group,
             nonce,
             token_buy,
             token_sell,
@@ -154,6 +159,7 @@ impl Order {
     }
 
     pub fn check_correctness(&self) -> Result<(), OrderError> {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         if self.price.0.bits() as usize > PRICE_BIT_WIDTH {
             return Err(OrderError::WrongPrice);
         }
@@ -168,6 +174,9 @@ impl Order {
         }
         if self.token_buy > max_token_id() {
             return Err(OrderError::WrongBuyToken);
+        }
+        if self.group != server_group_id {
+            return Err(OrderError::WrongGroup);
         }
         if self.token_sell > max_token_id() {
             return Err(OrderError::WrongSellToken);
@@ -194,6 +203,8 @@ pub enum OrderError {
     WrongSellToken,
     #[error("Specified time interval is not valid for the current time")]
     WrongTimeRange,
+    #[error("Specified Group Id is not link to this server")]
+    WrongGroup,
 }
 
 impl Swap {
@@ -208,6 +219,7 @@ impl Swap {
     pub fn new(
         submitter_id: AccountId,
         submitter_address: Address,
+        group: u16,
         nonce: Nonce,
         orders: (Order, Order),
         amounts: (BigUint, BigUint),
@@ -218,6 +230,7 @@ impl Swap {
         let mut tx = Self {
             submitter_id,
             submitter_address,
+            group,
             nonce,
             orders,
             amounts,
@@ -238,6 +251,7 @@ impl Swap {
     pub fn new_signed(
         submitter_id: AccountId,
         submitter_address: Address,
+        group: u16,
         nonce: Nonce,
         orders: (Order, Order),
         amounts: (BigUint, BigUint),
@@ -248,6 +262,7 @@ impl Swap {
         let mut tx = Self::new(
             submitter_id,
             submitter_address,
+            group,
             nonce,
             orders,
             amounts,
@@ -256,7 +271,7 @@ impl Swap {
             None,
         );
         tx.signature = TxSignature::sign_musig(private_key, &tx.get_sign_bytes());
-        tx.check_correctness()?;
+        tx.check_correctness(true, true)?;
         Ok(tx)
     }
 
@@ -298,6 +313,7 @@ impl Swap {
         out.extend_from_slice(&[CURRENT_TX_VERSION]);
         out.extend_from_slice(&self.submitter_id.to_be_bytes());
         out.extend_from_slice(self.submitter_address.as_bytes());
+        out.extend_from_slice(&self.group.to_be_bytes());
         out.extend_from_slice(&self.nonce.to_be_bytes());
         out.extend_from_slice(order_bytes);
         out.extend_from_slice(&self.fee_token.to_be_bytes());
@@ -376,7 +392,7 @@ impl Swap {
         if !message.is_empty() {
             message.push('\n');
         }
-        message.push_str(format!("Nonce: {}", self.nonce).as_str());
+        message.push_str(format!("Group: {},Nonce: {}", self.group, self.nonce).as_str());
         message
     }
 
@@ -387,13 +403,32 @@ impl Swap {
     }
 
     /// Verifies the transaction correctness:
-    pub fn check_correctness(&mut self) -> Result<(), TransactionError> {
+    pub fn check_correctness(
+        &mut self,
+        sender_autorisation: bool,
+        receiver_autorisation: bool,
+    ) -> Result<(), TransactionError> {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
+        let permissioned: bool = parse_env("SERVER_PERMISSIONED");
+        if permissioned {
+            if !sender_autorisation {
+                vlog::info!("sender of this swap transaction is not whitelisted");
+                return Err(TransactionError::NotAllowedSender);
+            }
+            if !receiver_autorisation {
+                vlog::info!("receiver of this swap transaction is not whitelisted");
+                return Err(TransactionError::NotAllowedDestination);
+            }
+        }
         self.check_amounts()?;
         if self.submitter_id > max_account_id() {
             return Err(TransactionError::WrongSubmitter);
         }
         if self.fee_token > max_processable_token() {
             return Err(TransactionError::WrongFeeToken);
+        }
+        if self.group != server_group_id {
+            return Err(TransactionError::WrongGroup);
         }
 
         self.orders
@@ -428,6 +463,9 @@ pub enum TransactionError {
     WrongSignature,
     AmountNotPackable,
     FeeNotPackable,
+    WrongGroup,
+    NotAllowedSender,
+    NotAllowedDestination,
 }
 
 impl Display for TransactionError {
@@ -444,6 +482,9 @@ impl Display for TransactionError {
                 return write!(f, "Error in {} order: {}", num, err)
             }
             TransactionError::WrongFeeToken => WRONG_TOKEN_FOR_PAYING_FEE,
+            TransactionError::WrongGroup => WRONG_GROUP,
+            TransactionError::NotAllowedSender => SENDER_NOT_WHITELISTED,
+            TransactionError::NotAllowedDestination => DESTINATION_NOT_WHITELISTED,
         };
         write!(f, "{}", error)
     }

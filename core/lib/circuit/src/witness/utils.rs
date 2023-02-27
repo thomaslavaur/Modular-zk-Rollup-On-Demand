@@ -27,17 +27,17 @@ use zksync_state::state::CollectedFee;
 use zksync_types::{
     block::Block,
     operations::{
-        ChangePubKeyOp, CloseOp, ForcedExitOp, MintNFTOp, SwapOp, TransferOp, TransferToNewOp,
-        WithdrawNFTOp, WithdrawOp,
+        ChangeGroupOp, ChangePubKeyOp, CloseOp, ForcedExitOp, MintNFTOp, SwapOp, TransferOp,
+        TransferToNewOp, WithdrawNFTOp, WithdrawOp,
     },
-    tx::{Order, PackedPublicKey, TxVersion},
+    tx::{Order, PackedPublicKey},
     AccountId, BlockNumber, ZkSyncOp,
 };
 // Local deps
 use crate::witness::{
-    ChangePubkeyOffChainWitness, CloseAccountWitness, DepositWitness, ForcedExitWitness,
-    FullExitWitness, MintNFTWitness, SwapWitness, TransferToNewWitness, TransferWitness,
-    WithdrawNFTWitness, WithdrawWitness, Witness,
+    ChangeGroupWitness, ChangePubkeyOffChainWitness, CloseAccountWitness, DepositWitness,
+    ForcedExitWitness, FullChangeGroupWitness, FullExitWitness, MintNFTWitness, SwapWitness,
+    TransferToNewWitness, TransferWitness, WithdrawNFTWitness, WithdrawWitness, Witness,
 };
 use crate::{
     account::AccountWitness,
@@ -50,11 +50,8 @@ use zksync_crypto::params::number_of_processable_tokens;
 
 macro_rules! get_bytes {
     ($tx:ident) => {
-        if let Some((_, version)) = $tx.tx.verify_signature() {
-            match version {
-                TxVersion::Legacy => $tx.tx.get_old_bytes(),
-                TxVersion::V1 => $tx.tx.get_bytes(),
-            }
+        if let Some(_) = $tx.tx.verify_signature() {
+            $tx.tx.get_bytes()
         } else {
             vec![]
         }
@@ -68,6 +65,7 @@ pub struct WitnessBuilder<'a> {
     pub fee_account_id: AccountId,
     pub block_number: BlockNumber,
     pub timestamp: u64,
+    pub group_id: u16,
     pub initial_root_hash: Fr,
     pub initial_used_subtree_root_hash: Fr,
     pub operations: Vec<Operation<Engine>>,
@@ -80,7 +78,7 @@ pub struct WitnessBuilder<'a> {
     pub fee_account_audit_path: Option<Vec<Option<Fr>>>,
     pub validator_non_processable_tokens_audit_before_fees: Option<Vec<Option<Fr>>>,
     pub validator_non_processable_tokens_audit_after_fees: Option<Vec<Option<Fr>>>,
-    pub pubdata_commitment: Option<Fr>,
+    pub pubdata_commitment_and_group: Option<Fr>,
 }
 
 impl<'a> WitnessBuilder<'a> {
@@ -89,6 +87,7 @@ impl<'a> WitnessBuilder<'a> {
         fee_account_id: AccountId,
         block_number: BlockNumber,
         timestamp: u64,
+        group_id: u16,
     ) -> WitnessBuilder {
         let initial_root_hash = account_tree.root_hash();
         let initial_used_subtree_root_hash = get_used_subtree_root_hash(account_tree);
@@ -97,6 +96,7 @@ impl<'a> WitnessBuilder<'a> {
             fee_account_id,
             block_number,
             timestamp,
+            group_id,
             initial_root_hash,
             initial_used_subtree_root_hash,
             operations: Vec::new(),
@@ -109,7 +109,7 @@ impl<'a> WitnessBuilder<'a> {
             fee_account_audit_path: None,
             validator_non_processable_tokens_audit_before_fees: None,
             validator_non_processable_tokens_audit_after_fees: None,
-            pubdata_commitment: None,
+            pubdata_commitment_and_group: None,
         }
     }
 
@@ -207,19 +207,21 @@ impl<'a> WitnessBuilder<'a> {
             crate::witness::utils::get_audits(self.account_tree, *self.fee_account_id, 0);
         self.fee_account_audit_path = Some(fee_account_audit_path);
 
-        let public_data_commitment = crate::witness::utils::public_data_commitment::<Engine>(
-            &self.pubdata,
-            Some(self.initial_root_hash),
-            Some(
-                self.root_after_fees
-                    .expect("root after fee should be present at this step"),
-            ),
-            Some(Fr::from_str(&self.fee_account_id.to_string()).expect("failed to parse")),
-            Some(fr_from(self.block_number)),
-            Some(fr_from(self.timestamp)),
-            &self.offset_commitment,
-        );
-        self.pubdata_commitment = Some(public_data_commitment);
+        let public_data_commitment_and_group =
+            crate::witness::utils::public_data_commitment::<Engine>(
+                &self.pubdata,
+                Some(self.initial_root_hash),
+                Some(
+                    self.root_after_fees
+                        .expect("root after fee should be present at this step"),
+                ),
+                Some(Fr::from_str(&self.fee_account_id.to_string()).expect("failed to parse")),
+                Some(fr_from(self.block_number)),
+                Some(fr_from(self.timestamp)),
+                &self.offset_commitment,
+                Some(fr_from(self.group_id)),
+            );
+        self.pubdata_commitment_and_group = Some(public_data_commitment_and_group);
     }
 
     /// Finaly, creates circuit instance for given operations.
@@ -230,8 +232,9 @@ impl<'a> WitnessBuilder<'a> {
             old_root: Some(self.initial_root_hash),
             initial_used_subtree_root: Some(self.initial_used_subtree_root_hash),
             operations: self.operations,
-            pub_data_commitment: Some(
-                self.pubdata_commitment
+            group_id: Some(fr_from(self.group_id)),
+            pub_data_commitment_and_group: Some(
+                self.pubdata_commitment_and_group
                     .expect("pubdata commitment not present"),
             ),
             block_number: Some(fr_from(self.block_number)),
@@ -315,6 +318,7 @@ pub fn public_data_commitment<E: JubjubEngine>(
     block_number: Option<E::Fr>,
     timestamp: Option<E::Fr>,
     offset_commitment: &[bool],
+    group_id: Option<E::Fr>,
 ) -> E::Fr {
     let mut public_data_initial_bits = vec![];
 
@@ -405,8 +409,9 @@ pub fn public_data_commitment<E: JubjubEngine>(
     let mut repr = E::Fr::zero().into_repr();
     repr.read_be(&hash_result[..])
         .expect("pack hash as field element");
-
-    E::Fr::from_repr(repr).unwrap()
+    let mut result = E::Fr::from_repr(repr).unwrap();
+    result.add_assign(&group_id.unwrap());
+    result
 }
 
 pub fn get_audits(
@@ -687,6 +692,21 @@ impl SigDataInput {
         )
     }
 
+    pub fn from_change_group_op(change_group_op: &ChangeGroupOp) -> Result<Self, anyhow::Error> {
+        let sign_packed = change_group_op
+            .tx
+            .signature
+            .signature
+            .serialize_packed()
+            .expect("signature serialize");
+        let tx_bytes = get_bytes!(change_group_op);
+        SigDataInput::new(
+            &sign_packed,
+            &tx_bytes,
+            &change_group_op.tx.signature.pub_key,
+        )
+    }
+
     /// Provides a vector of copies of this `SigDataInput` object, all with one field
     /// set to incorrect value.
     /// Used for circuit tests.
@@ -739,6 +759,7 @@ pub fn get_used_subtree_root_hash(account_tree: &CircuitAccountTree) -> Fr {
 pub fn build_block_witness<'a>(
     account_tree: &'a mut CircuitAccountTree,
     block: &Block,
+    server_group_id: u16,
 ) -> Result<WitnessBuilder<'a>, anyhow::Error> {
     let block_number = block.block_number;
     let block_size = block.block_chunks_size;
@@ -750,6 +771,7 @@ pub fn build_block_witness<'a>(
         block.fee_account,
         block_number,
         block.timestamp,
+        server_group_id,
     );
 
     let ops = block
@@ -925,6 +947,36 @@ pub fn build_block_witness<'a>(
                 pub_data.extend(withdraw_nft_witness.get_pubdata());
                 offset_commitment.extend(withdraw_nft_witness.get_offset_commitment_data())
             }
+            ZkSyncOp::ChangeGroup(change_group) => {
+                let change_group_witness =
+                    ChangeGroupWitness::apply_tx(witness_accum.account_tree, &change_group);
+
+                let input = SigDataInput::from_change_group_op(&change_group)?;
+                let change_group_operations = change_group_witness.calculate_operations(input);
+
+                operations.extend(change_group_operations);
+                fees.push(CollectedFee {
+                    token: change_group.tx.token,
+                    amount: change_group.tx.fee,
+                });
+                pub_data.extend(change_group_witness.get_pubdata());
+                offset_commitment.extend(change_group_witness.get_offset_commitment_data())
+            }
+            ZkSyncOp::FullChangeGroup(full_change_group_op) => {
+                let success = full_change_group_op.withdraw_amount.is_some();
+
+                let full_change_group_witness = FullChangeGroupWitness::apply_tx(
+                    witness_accum.account_tree,
+                    &(*full_change_group_op, success),
+                );
+
+                let full_change_group_operations =
+                    full_change_group_witness.calculate_operations(());
+
+                operations.extend(full_change_group_operations);
+                pub_data.extend(full_change_group_witness.get_pubdata());
+                offset_commitment.extend(full_change_group_witness.get_offset_commitment_data())
+            }
         }
     }
 
@@ -944,12 +996,14 @@ pub fn build_block_witness<'a>(
     );
     witness_accum.calculate_pubdata_commitment();
 
+    let mut a = witness_accum.pubdata_commitment_and_group.unwrap();
+    a.sub_assign(&fr_from(witness_accum.group_id));
+
     let mut block_commitment = block.block_commitment.as_bytes().to_vec();
     block_commitment[0] &= 0xffu8 >> 3;
     let block_commitment = fr_from_bytes(block_commitment);
     assert_eq!(
-        witness_accum.pubdata_commitment.unwrap(),
-        block_commitment,
+        a, block_commitment,
         "Witness accumulator and server have different commitment. Block: {}",
         block.block_number
     );

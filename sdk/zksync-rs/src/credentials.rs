@@ -31,17 +31,23 @@ impl<S: EthereumSigner> WalletCredentials<S> {
         eth_address: Address,
         eth_signer: S,
         network: Network,
+        group: u16,
     ) -> Result<Self, ClientError> {
         // Pre-defined message to generate seed from.
         const MESSAGE: &str =
-            "Access zkSync account.\n\nOnly sign this message for a trusted client!";
+            "Access ISAE-SUPAERO account.\n\nOnly sign this message for a trusted client!";
 
         // Add chain_id to the message to prevent replay attacks between networks
         // This is added for testnets only
         let eth_sign_message = if let Network::Mainnet = network {
-            MESSAGE.into()
+            format!("{}\nGroup ID: {}.", MESSAGE, group)
         } else {
-            format!("{}\nChain ID: {}.", MESSAGE, network.chain_id())
+            format!(
+                "{}\nGroup ID: {}\nChain ID: {}.",
+                MESSAGE,
+                group,
+                network.chain_id()
+            )
         }
         .into_bytes();
 

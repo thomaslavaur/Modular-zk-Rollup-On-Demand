@@ -19,6 +19,7 @@ pub struct TransferNFTBuilder<'a, S: EthereumSigner, P: Provider> {
     fee_token: Option<Token>,
     fee: Option<BigUint>,
     to: Option<Address>,
+    group: Option<u16>,
     nonce: Option<Nonce>,
     valid_from: Option<u64>,
     valid_until: Option<u64>,
@@ -37,6 +38,7 @@ where
             fee_token: None,
             fee: None,
             to: None,
+            group: None,
             nonce: None,
             valid_from: None,
             valid_until: None,
@@ -62,6 +64,9 @@ where
         let to = self
             .to
             .ok_or_else(|| ClientError::MissingRequiredField("to".into()))?;
+        let group = self
+            .group
+            .ok_or_else(|| ClientError::MissingRequiredField("group".into()))?;
         let valid_from = self.valid_from.unwrap_or(0);
         let valid_until = self.valid_until.unwrap_or(u64::MAX);
 
@@ -102,6 +107,7 @@ where
                 BigUint::from(1u16),
                 BigUint::from(0u16),
                 to,
+                group,
                 nonce,
                 TimeRange::new(valid_from, valid_until),
             )
@@ -116,6 +122,7 @@ where
                 BigUint::from(0u16),
                 fee,
                 to,
+                group,
                 nonce + 1,
                 TimeRange::new(valid_from, valid_until),
             )
@@ -220,6 +227,11 @@ where
     /// Sets the transaction nonce.
     pub fn nonce(mut self, nonce: Nonce) -> Self {
         self.nonce = Some(nonce);
+        self
+    }
+
+    pub fn group(mut self, group: u16) -> Self {
+        self.group = Some(group);
         self
     }
 }

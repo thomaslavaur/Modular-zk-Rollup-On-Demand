@@ -3,8 +3,8 @@ use num::{BigUint, ToPrimitive};
 use serde::{Deserialize, Serialize};
 use zksync_crypto::{
     params::{
-        ACCOUNT_ID_BIT_WIDTH, BALANCE_BIT_WIDTH, CHUNK_BYTES, FR_ADDRESS_LEN, LEGACY_CHUNK_BYTES,
-        LEGACY_TOKEN_BIT_WIDTH, TOKEN_BIT_WIDTH,
+        ACCOUNT_ID_BIT_WIDTH, BALANCE_BIT_WIDTH, CHUNK_BYTES, FR_ADDRESS_LEN, GROUP_LEN,
+        LEGACY_CHUNK_BYTES, LEGACY_TOKEN_BIT_WIDTH, TOKEN_BIT_WIDTH,
     },
     primitives::FromBytes,
 };
@@ -26,6 +26,7 @@ impl DepositOp {
         data.extend_from_slice(&self.priority_op.token.to_be_bytes());
         data.extend_from_slice(&self.priority_op.amount.to_u128().unwrap().to_be_bytes());
         data.extend_from_slice(self.priority_op.to.as_bytes());
+        data.extend_from_slice(&self.priority_op.group.to_be_bytes());
         data.resize(Self::CHUNKS * CHUNK_BYTES, 0x00);
         data
     }
@@ -51,6 +52,7 @@ impl DepositOp {
         let token_id_offset = account_id_offset + ACCOUNT_ID_BIT_WIDTH / 8;
         let amount_offset = token_id_offset + token_bit_width / 8;
         let account_address_offset = amount_offset + BALANCE_BIT_WIDTH / 8;
+        let group_offset = account_address_offset + FR_ADDRESS_LEN;
 
         let account_id = u32::from_bytes(
             &bytes[account_id_offset..account_id_offset + ACCOUNT_ID_BIT_WIDTH / 8],
@@ -65,6 +67,8 @@ impl DepositOp {
         let to = Address::from_slice(
             &bytes[account_address_offset..account_address_offset + FR_ADDRESS_LEN],
         );
+        let group = u16::from_bytes(&bytes[group_offset..group_offset + GROUP_LEN])
+            .ok_or(DepositOpError::CannotGetGroup)?;
 
         let from = Address::default(); // unknown from pubdata.
 
@@ -74,6 +78,7 @@ impl DepositOp {
                 token: TokenId(token),
                 amount,
                 to,
+                group,
             },
             account_id: AccountId(account_id),
         })

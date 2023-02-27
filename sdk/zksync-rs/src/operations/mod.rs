@@ -11,12 +11,18 @@ use crate::{
 };
 
 pub use self::{
-    change_pubkey::ChangePubKeyBuilder, mint_nft::MintNFTBuilder, transfer::TransferBuilder,
-    transfer_nft::TransferNFTBuilder, withdraw::WithdrawBuilder, withdraw_nft::WithdrawNFTBuilder,
+    change_group::ChangeGroupBuilder, change_pubkey::ChangePubKeyBuilder,
+    forced_exit::ForcedExitBuilder, mint_nft::MintNFTBuilder, order::OrderBuilder,
+    swap::SwapBuilder, transfer::TransferBuilder, transfer_nft::TransferNFTBuilder,
+    withdraw::WithdrawBuilder, withdraw_nft::WithdrawNFTBuilder,
 };
 
+mod change_group;
 mod change_pubkey;
+mod forced_exit;
 mod mint_nft;
+mod order;
+mod swap;
 mod transfer;
 mod transfer_nft;
 mod withdraw;

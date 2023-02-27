@@ -3,11 +3,13 @@ use zksync_types::AccountUpdates;
 
 #[macro_use]
 mod invariant;
+mod change_group;
 mod change_pubkey;
 mod close;
 mod deposit;
 pub mod error;
 mod forced_exit;
+mod full_change_group;
 mod full_exit;
 mod mint_nft;
 mod swap;

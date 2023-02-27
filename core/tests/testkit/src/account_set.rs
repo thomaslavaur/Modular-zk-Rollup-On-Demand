@@ -71,6 +71,7 @@ impl AccountSet {
         fee_token: Token,
         content_hash: H256,
         fee: BigUint,
+        group: u16,
         nonce: Option<Nonce>,
         increment_nonce: bool,
     ) -> ZkSyncTx {
@@ -85,6 +86,7 @@ impl AccountSet {
                     content_hash,
                     fee,
                     &recipient.address,
+                    group,
                     nonce,
                     increment_nonce,
                 )
@@ -116,6 +118,7 @@ impl AccountSet {
                 amount,
                 fee,
                 &to.address,
+                1,
                 nonce,
                 increment_nonce,
                 time_range,
@@ -149,6 +152,7 @@ impl AccountSet {
                 amount,
                 fee,
                 &to_address,
+                1,
                 nonce,
                 increment_nonce,
                 Default::default(),
@@ -182,6 +186,7 @@ impl AccountSet {
                 amount,
                 fee,
                 &to.address,
+                1,
                 nonce,
                 increment_nonce,
                 time_range,
@@ -210,6 +215,7 @@ impl AccountSet {
             token_id.0,
             fee,
             &target.address,
+            1,
             nonce,
             increment_nonce,
             time_range,
@@ -271,6 +277,7 @@ impl AccountSet {
                 amount,
                 fee,
                 &to_address,
+                1,
                 nonce,
                 increment_nonce,
                 Default::default(),
@@ -302,13 +309,13 @@ impl AccountSet {
         zksync_signer: ZKSyncAccountId,
         fee_token: TokenId,
         fee: BigUint,
+        group: u16,
         nonce: Option<Nonce>,
         increment_nonce: bool,
         time_range: TimeRange,
     ) -> ZkSyncTx {
         let zksync_account = &self.zksync_accounts[zksync_signer.0];
         let auth_nonce = nonce.unwrap_or_else(|| zksync_account.nonce());
-
         let eth_account = &self.eth_accounts[eth_account.0];
         let tx_receipt = eth_account
             .auth_fact(&zksync_account.pubkey_hash.data, auth_nonce)
@@ -320,6 +327,7 @@ impl AccountSet {
             increment_nonce,
             fee_token,
             fee,
+            group,
             ChangePubKeyType::Onchain,
             time_range,
         )))
@@ -330,6 +338,7 @@ impl AccountSet {
         zksync_signer: ZKSyncAccountId,
         fee_token: TokenId,
         fee: BigUint,
+        group: u16,
         nonce: Option<Nonce>,
         increment_nonce: bool,
         time_range: TimeRange,
@@ -340,6 +349,7 @@ impl AccountSet {
             increment_nonce,
             fee_token,
             fee,
+            group,
             if zksync_account.eth_account_data.is_eoa() {
                 ChangePubKeyType::ECDSA
             } else if zksync_account.eth_account_data.is_create2() {
@@ -379,6 +389,7 @@ impl AccountSet {
             amounts.1.clone(),
             amounts.0.clone(),
             &accounts.2.address,
+            1,
             None,
             true,
             time_range,
@@ -391,6 +402,7 @@ impl AccountSet {
             amounts.0.clone(),
             amounts.1.clone(),
             &accounts.3.address,
+            1,
             None,
             true,
             time_range,
@@ -402,6 +414,7 @@ impl AccountSet {
                 .sign_swap(
                     (order_0, order_1),
                     amounts,
+                    1,
                     nonce,
                     increment_nonce,
                     tokens.2 .0,

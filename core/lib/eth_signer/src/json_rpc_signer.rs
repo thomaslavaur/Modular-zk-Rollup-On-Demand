@@ -53,6 +53,7 @@ impl EthereumSigner for JsonRpcSigner {
             let msg = match &self.signer_type {
                 Some(SignerType::NotNeedPrefix) => msg.to_vec(),
                 Some(SignerType::NeedPrefix) => {
+                    println!("json rpc {}", msg.len());
                     let prefix = format!("\x19Ethereum Signed Message:\n{}", msg.len());
                     let mut bytes = Vec::with_capacity(prefix.len() + msg.len());
                     bytes.extend_from_slice(prefix.as_bytes());
@@ -191,7 +192,7 @@ impl JsonRpcSigner {
 
         let msg = "JsonRpcSigner type was not specified. Sign this message to detect the signer type. It only has to be done once per session";
         let msg_with_prefix = format!("\x19Ethereum Signed Message:\n{}{}", msg.len(), msg);
-
+        println!("json rpc 194 {}", msg.len());
         let signature: PackedEthSignature = {
             let message = JsonRpcRequest::sign_message(self.address()?, msg.as_bytes());
 

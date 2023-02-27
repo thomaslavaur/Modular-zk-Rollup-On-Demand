@@ -37,6 +37,7 @@ pub struct ChangePubkeyOffChainData {
     pub new_pubkey_hash: Fr,
     pub fee_token: u32,
     pub fee: u128,
+    pub group: u16,
     pub nonce: Fr,
     pub valid_from: u64,
     pub valid_until: u64,
@@ -67,6 +68,7 @@ impl Witness for ChangePubkeyOffChainWitness<Bn256> {
             new_pubkey_hash: change_pubkey_offchain.tx.new_pk_hash.as_fr(),
             fee_token: *change_pubkey_offchain.tx.fee_token as u32,
             fee: change_pubkey_offchain.tx.fee.to_u128().unwrap(),
+            group: change_pubkey_offchain.tx.group,
             nonce: fr_from(change_pubkey_offchain.tx.nonce),
             valid_from,
             valid_until,
@@ -93,6 +95,7 @@ impl Witness for ChangePubkeyOffChainWitness<Bn256> {
             &self.args.eth_address.unwrap(),
             ETH_ADDRESS_BIT_WIDTH,
         );
+
         append_be_fixed_width(
             &mut pubdata_bits,
             &self.before.witness.account_witness.nonce.unwrap(),
@@ -167,6 +170,8 @@ impl ChangePubkeyOffChainWitness<Bn256> {
         let fee_token_fe = fr_from(change_pubkey_offcahin.fee_token);
         let fee_as_field_element = fr_from(change_pubkey_offcahin.fee);
 
+        let group = fr_from(change_pubkey_offcahin.group);
+
         let fee_bits = FloatConversions::to_float(
             change_pubkey_offcahin.fee,
             FEE_EXPONENT_BIT_WIDTH,
@@ -233,6 +238,7 @@ impl ChangePubkeyOffChainWitness<Bn256> {
                 fee: Some(fee_encoded),
                 a: Some(a),
                 b: Some(b),
+                group: Some(group),
                 pub_nonce: Some(change_pubkey_offcahin.nonce),
                 new_pub_key_hash: Some(change_pubkey_offcahin.new_pubkey_hash),
                 valid_from: Some(fr_from(&change_pubkey_offcahin.valid_from)),

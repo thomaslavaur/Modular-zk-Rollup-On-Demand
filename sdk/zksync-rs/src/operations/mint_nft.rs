@@ -18,6 +18,7 @@ pub struct MintNFTBuilder<'a, S: EthereumSigner, P: Provider> {
     content_hash: Option<H256>,
     fee_token: Option<Token>,
     fee: Option<BigUint>,
+    group: Option<u16>,
     nonce: Option<Nonce>,
 }
 
@@ -34,6 +35,7 @@ where
             content_hash: None,
             fee_token: None,
             fee: None,
+            group: None,
             nonce: None,
         }
     }
@@ -49,6 +51,10 @@ where
         let fee_token = self
             .fee_token
             .ok_or_else(|| ClientError::MissingRequiredField("fee_token".into()))?;
+
+        let group = self
+            .group
+            .ok_or_else(|| ClientError::MissingRequiredField("group".into()))?;
 
         let fee = match self.fee {
             Some(fee) => fee,
@@ -76,7 +82,7 @@ where
 
         self.wallet
             .signer
-            .sign_mint_nft(recipient, content_hash, fee_token, fee, nonce)
+            .sign_mint_nft(recipient, content_hash, fee_token, fee, group, nonce)
             .await
             .map(|(tx, signature)| (ZkSyncTx::MintNFT(Box::new(tx)), signature))
             .map_err(ClientError::SigningError)
@@ -149,6 +155,12 @@ where
 
         self.recipient = Some(recipient);
         Ok(self)
+    }
+
+    /// Sets the group of the mint.
+    pub fn group(mut self, group: u16) -> Self {
+        self.group = Some(group);
+        self
     }
 
     /// Sets the transaction nonce.

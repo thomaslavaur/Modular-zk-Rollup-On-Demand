@@ -11,12 +11,11 @@ use zksync_crypto::{
     rescue_poseidon::rescue_hash,
     PrivateKey,
 };
-
-use zksync_utils::{format_units, BigUintSerdeAsRadix10Str};
+use zksync_utils::{format_units, parse_env, BigUintSerdeAsRadix10Str};
 
 use crate::tx::error::{
-    FEE_AMOUNT_IS_NOT_PACKABLE, WRONG_ACCOUNT_ID, WRONG_FEE_ERROR, WRONG_SIGNATURE,
-    WRONG_TOKEN_FOR_PAYING_FEE,
+    DESTINATION_NOT_WHITELISTED, FEE_AMOUNT_IS_NOT_PACKABLE, SENDER_NOT_WHITELISTED,
+    WRONG_ACCOUNT_ID, WRONG_FEE_ERROR, WRONG_GROUP, WRONG_SIGNATURE, WRONG_TOKEN_FOR_PAYING_FEE,
 };
 use crate::tx::version::TxVersion;
 use crate::{
@@ -42,6 +41,8 @@ pub struct MintNFT {
     /// Token that will be used for fee.
     #[serde(default)]
     pub fee_token: TokenId,
+    /// Group ID
+    pub group: u16,
     /// Current account nonce.
     pub nonce: Nonce,
     /// Transaction zkSync signature.
@@ -66,6 +67,7 @@ impl MintNFT {
         recipient: Address,
         fee: BigUint,
         fee_token: TokenId,
+        group: u16,
         nonce: Nonce,
         signature: Option<TxSignature>,
     ) -> Self {
@@ -76,6 +78,7 @@ impl MintNFT {
             recipient,
             fee,
             fee_token,
+            group,
             nonce,
             signature: signature.clone().unwrap_or_default(),
             cached_signer: VerifiedSignatureCache::NotCached,
@@ -96,6 +99,7 @@ impl MintNFT {
         recipient: Address,
         fee: BigUint,
         fee_token: TokenId,
+        group: u16,
         nonce: Nonce,
         private_key: &PrivateKey,
     ) -> Result<Self, TransactionError> {
@@ -106,29 +110,26 @@ impl MintNFT {
             recipient,
             fee,
             fee_token,
+            group,
             nonce,
             None,
         );
         tx.signature = TxSignature::sign_musig(private_key, &tx.get_bytes());
-        tx.check_correctness()?;
+        tx.check_correctness(true, true)?;
         Ok(tx)
     }
 
-    /// Encodes the transaction data as the byte sequence according to the zkSync protocol.
     pub fn get_bytes(&self) -> Vec<u8> {
-        self.get_bytes_with_version(CURRENT_TX_VERSION)
-    }
-
-    pub fn get_bytes_with_version(&self, version: u8) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&[255u8 - Self::TX_TYPE]);
-        out.extend_from_slice(&[version]);
+        out.extend_from_slice(&[CURRENT_TX_VERSION]);
         out.extend_from_slice(&self.creator_id.to_be_bytes());
         out.extend_from_slice(self.creator_address.as_bytes());
         out.extend_from_slice(self.content_hash.as_bytes());
         out.extend_from_slice(self.recipient.as_bytes());
         out.extend_from_slice(&self.fee_token.to_be_bytes());
         out.extend_from_slice(&pack_fee_amount(&self.fee));
+        out.extend_from_slice(&self.group.to_be_bytes());
         out.extend_from_slice(&self.nonce.to_be_bytes());
         out
     }
@@ -149,9 +150,10 @@ impl MintNFT {
     /// batch message.
     pub fn get_ethereum_sign_message_part(&self, token_symbol: &str, decimals: u8) -> String {
         let mut message = format!(
-            "MintNFT {content:?} for: {recipient:?}",
+            "MintNFT {content:?} for: {recipient:?}, on group: {group}",
             content = self.content_hash,
-            recipient = self.recipient
+            recipient = self.recipient,
+            group = self.group
         );
         if !self.fee.is_zero() {
             message.push('\n');
@@ -188,12 +190,33 @@ impl MintNFT {
     /// - `creator_account_id` field must be within supported range.
     /// - `fee_token` field must be within supported range.
     /// - `fee` field must represent a packable value.
-    pub fn check_correctness(&mut self) -> Result<(), TransactionError> {
+    pub fn check_correctness(
+        &mut self,
+        sender_autorisation: bool,
+        receiver_autorisation: bool,
+    ) -> Result<(), TransactionError> {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
+        let permissioned: bool = parse_env("SERVER_PERMISSIONED");
+        if permissioned {
+            if !sender_autorisation {
+                vlog::info!("sender of this MintNFT transaction is not whitelisted");
+                return Err(TransactionError::NotAllowedSender);
+            }
+            if !receiver_autorisation {
+                vlog::info!("receiver of this MintNFT transaction is not whitelisted");
+                return Err(TransactionError::NotAllowedDestination);
+            }
+        }
+
         if self.fee > BigUint::from(u128::MAX) {
             return Err(TransactionError::WrongFee);
         }
         if !is_fee_amount_packable(&self.fee) {
             return Err(TransactionError::FeeNotPackable);
+        }
+
+        if self.group != server_group_id {
+            return Err(TransactionError::WrongGroup);
         }
 
         if self.creator_id > max_account_id() {
@@ -220,6 +243,9 @@ pub enum TransactionError {
     WrongCreatorId,
     WrongSignature,
     WrongFeeToken,
+    WrongGroup,
+    NotAllowedSender,
+    NotAllowedDestination,
 }
 
 impl Display for TransactionError {
@@ -230,6 +256,9 @@ impl Display for TransactionError {
             TransactionError::WrongSignature => WRONG_SIGNATURE,
             TransactionError::WrongCreatorId => WRONG_ACCOUNT_ID,
             TransactionError::WrongFeeToken => WRONG_TOKEN_FOR_PAYING_FEE,
+            TransactionError::WrongGroup => WRONG_GROUP,
+            TransactionError::NotAllowedSender => SENDER_NOT_WHITELISTED,
+            TransactionError::NotAllowedDestination => DESTINATION_NOT_WHITELISTED,
         };
         write!(f, "{}", error)
     }

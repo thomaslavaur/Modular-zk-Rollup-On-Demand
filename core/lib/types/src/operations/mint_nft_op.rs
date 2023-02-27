@@ -84,6 +84,7 @@ impl MintNFTOp {
                 recipient_address,
                 fee,
                 TokenId(fee_token_id),
+                Default::default(),
                 Nonce(nonce),
                 None,
             ),

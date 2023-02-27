@@ -741,6 +741,7 @@ impl ZkSyncStateKeeper {
     async fn seal_pending_block(&mut self) {
         let start = Instant::now();
 
+        vlog::info!("into seal");
         // Before sealing the block, we need to store the pending block in order to
         // save all the new transactions to the database.
         // Even though it will be removed once the seal request is processed, having a consistent
@@ -801,7 +802,6 @@ impl ZkSyncStateKeeper {
         let block_metadata = BlockMetadata {
             fast_processing: self.pending_block.fast_processing_required,
         };
-
         for tx in &block.block_transactions {
             let labels = vec![
                 ("stage", "seal_block".to_string()),

@@ -22,7 +22,7 @@ fn generate_zksync_circuit_proofs(
             let mut account_tree = CircuitAccountTree::new(account_tree_depth());
             account_tree.insert(0, Account::default().into());
             let mut witness_builder =
-                WitnessBuilder::new(&mut account_tree, AccountId(0), block_number, 0);
+                WitnessBuilder::new(&mut account_tree, AccountId(0), block_number, 0, 0);
             witness_builder.extend_pubdata_with_noops(block_size);
             witness_builder.collect_fees(&[]);
             witness_builder.calculate_pubdata_commitment();

@@ -157,6 +157,7 @@ impl TestServerConfig {
                 false,
                 TokenId(0),
                 fee.into(),
+                1,
                 ChangePubKeyType::ECDSA,
                 Default::default(),
             );

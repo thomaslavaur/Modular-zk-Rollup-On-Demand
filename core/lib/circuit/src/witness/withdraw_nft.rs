@@ -44,6 +44,7 @@ pub struct WithdrawNFTData {
     pub content_hash: H256,
     pub token: u32,
     pub to_address: Fr,
+    pub group: u16,
     pub valid_from: u64,
     pub valid_until: u64,
 }
@@ -76,6 +77,7 @@ impl Witness for WithdrawNFTWitness<Bn256> {
             content_hash: withdraw_nft.content_hash,
             token: *withdraw_nft.tx.token as u32,
             to_address: eth_address_to_fr(&withdraw_nft.tx.to),
+            group: withdraw_nft.tx.group,
             valid_from: time_range.valid_from,
             valid_until: time_range.valid_until,
         };
@@ -243,7 +245,7 @@ impl WithdrawNFTWitness<Bn256> {
         let fee_token_fe = Fr::from_str(&withdraw_nft.fee_token.to_string()).unwrap();
         let token_fe = Fr::from_str(&withdraw_nft.token.to_string()).unwrap();
         let serial_id_fe = Fr::from_str(&withdraw_nft.nft_serial_id.to_string()).unwrap();
-
+        let group = fr_from(withdraw_nft.group);
         let fee_as_field_element = Fr::from_str(&withdraw_nft.fee.to_string()).unwrap();
         let fee_bits = FloatConversions::to_float(
             withdraw_nft.fee,
@@ -387,6 +389,7 @@ impl WithdrawNFTWitness<Bn256> {
                 fee: Some(fee_encoded),
                 a: Some(a),
                 b: Some(b),
+                group: Some(group),
                 valid_from: Some(fr_from(&valid_from)),
                 valid_until: Some(fr_from(&valid_until)),
                 special_eth_addresses: vec![

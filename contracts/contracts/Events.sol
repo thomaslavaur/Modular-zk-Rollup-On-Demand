@@ -9,10 +9,10 @@ import "./Operations.sol";
 /// @author Matter Labs
 interface Events {
     /// @notice Event emitted when a block is committed
-    event BlockCommit(uint32 indexed blockNumber);
+    event BlockCommit(uint32 indexed blockNumber, uint16 group_id);
 
     /// @notice Event emitted when a block is verified
-    event BlockVerification(uint32 indexed blockNumber);
+    event BlockVerification(uint32 indexed blockNumber, uint16 group_id);
 
     /// @notice Event emitted when user funds are withdrawn from the zkSync state and contract
     event Withdrawal(uint16 indexed tokenId, uint128 amount);
@@ -27,16 +27,16 @@ interface Events {
     event WithdrawalNFTPending(uint32 indexed tokenId);
 
     /// @notice Event emitted when user funds are deposited to the zkSync contract
-    event Deposit(uint16 indexed tokenId, uint128 amount);
+    event Deposit(uint16 indexed tokenId, uint128 amount, uint16 group_id);
 
     /// @notice Event emitted when user sends a authentication fact (e.g. pub-key hash)
     event FactAuth(address indexed sender, uint32 nonce, bytes fact);
 
     /// @notice Event emitted when blocks are reverted
-    event BlocksRevert(uint32 totalBlocksVerified, uint32 totalBlocksCommitted);
+    event BlocksRevert(uint32 totalBlocksVerified, uint32 totalBlocksCommitted, uint16 group_id);
 
     /// @notice Exodus mode entered event
-    event ExodusMode();
+    event ExodusMode(uint16 _group_id);
 
     /// @notice New priority request event. Emitted when a request is placed into mapping
     event NewPriorityRequest(
@@ -44,7 +44,8 @@ interface Events {
         uint64 serialId,
         Operations.OpType opType,
         bytes pubData,
-        uint256 expirationBlock
+        uint256 expirationBlock,
+        uint16 group_id
     );
 
     /// @notice Deposit committed event.
@@ -70,6 +71,8 @@ interface Events {
 
     /// @notice Notice period changed
     event NoticePeriodChange(uint256 newNoticePeriod);
+
+    event GroupCreated(uint16 group_id, bool restricted);
 }
 
 /// @title Upgrade events

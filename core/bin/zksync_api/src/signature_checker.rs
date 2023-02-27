@@ -17,6 +17,7 @@ use tokio::task::JoinHandle;
 
 // Workspace uses
 use zksync_eth_client::EthereumGateway;
+use zksync_storage::StorageProcessor;
 use zksync_types::{
     tx::{error::TxAddError, EthBatchSignData, EthSignData, TxEthSignature},
     Address, Order, SignedZkSyncTx, Token, ZkSyncTx,
@@ -53,7 +54,7 @@ impl VerifiedTx {
     ) -> Result<Self, TxAddError> {
         verify_eth_signature(&request_data, eth_checker).await?;
         let mut tx_variant = request_data.get_tx_variant();
-        verify_tx_correctness(&mut tx_variant)?;
+        verify_tx_correctness(&mut tx_variant).await?;
 
         Ok(Self(tx_variant))
     }
@@ -92,13 +93,7 @@ async fn verify_eth_signature(
 ) -> Result<(), TxAddError> {
     match request_data {
         RequestData::Tx(request) => {
-            verify_eth_signature_single_tx(
-                &request.tx,
-                request.sender,
-                request.token.clone(),
-                eth_checker,
-            )
-            .await?;
+            verify_eth_signature_single_tx(&request.tx, request.sender, eth_checker).await?;
         }
         RequestData::Batch(request) => {
             let accounts = &request.senders;
@@ -109,14 +104,14 @@ async fn verify_eth_signature(
                 return Err(TxAddError::Other);
             }
             if let Some(batch_sign_data) = &request.batch_sign_data {
-                verify_eth_signature_txs_batch(txs, accounts, batch_sign_data, eth_checker).await?;
+                verify_eth_signature_txs_batch(accounts, batch_sign_data, eth_checker).await?;
             }
             // In case there're signatures provided for some of transactions
             // we still verify them.
-            for ((tx, &account), token) in
+            for ((tx, &account), _token) in
                 txs.iter().zip(accounts.iter()).zip(tokens.iter().cloned())
             {
-                verify_eth_signature_single_tx(tx, account, token, eth_checker).await?;
+                verify_eth_signature_single_tx(tx, account, eth_checker).await?;
             }
         }
         RequestData::Order(request) => {
@@ -176,7 +171,6 @@ async fn verify_ethereum_signature(
 async fn verify_eth_signature_single_tx(
     tx: &SignedZkSyncTx,
     sender_address: Address,
-    token: Token,
     eth_checker: &EthereumChecker,
 ) -> Result<(), TxAddError> {
     let start = Instant::now();
@@ -198,25 +192,22 @@ async fn verify_eth_signature_single_tx(
             }
         }
     }
+    if let ZkSyncTx::ChangeGroup(change_group) = &tx.tx {
+        let is_authorized = eth_checker
+            .is_user_allowed_to_transfer_to_this_group(change_group.group2, change_group.to)
+            .await
+            .expect("Unable to check onchain ChangeGroup Authorization");
+        if !is_authorized {
+            return Err(TxAddError::UserNotWhitelisted);
+        }
+    }
 
     // Check the signature.
     if let Some(sign_data) = &tx.eth_sign_data {
         let signature = &sign_data.signature;
-        let mut signature_correct =
+        let signature_correct =
             verify_ethereum_signature(signature, &sign_data.message, sender_address, eth_checker)
                 .await;
-        if !signature_correct {
-            let old_message = tx.get_old_ethereum_sign_message(token);
-            if let Some(message) = old_message {
-                signature_correct = verify_ethereum_signature(
-                    signature,
-                    message.as_bytes(),
-                    sender_address,
-                    eth_checker,
-                )
-                .await;
-            }
-        }
         if !signature_correct {
             return Err(TxAddError::IncorrectEthSignature);
         }
@@ -230,7 +221,6 @@ async fn verify_eth_signature_single_tx(
 }
 
 async fn verify_eth_signature_txs_batch(
-    txs: &[SignedZkSyncTx],
     senders: &[Address],
     batch_sign_data: &EthBatchSignData,
     eth_checker: &EthereumChecker,
@@ -238,13 +228,6 @@ async fn verify_eth_signature_txs_batch(
     let start = Instant::now();
     // Cache for verified senders.
     let mut signers = HashSet::with_capacity(senders.len());
-    // For every sender check whether there exists at least one signature that matches it.
-    let old_message = match txs.iter().all(|tx| tx.is_backwards_compatible()) {
-        true => Some(EthBatchSignData::get_old_ethereum_batch_message(
-            txs.iter().map(|tx| &tx.tx),
-        )),
-        false => None,
-    };
 
     for sender in senders {
         if signers.contains(sender) {
@@ -257,24 +240,13 @@ async fn verify_eth_signature_txs_batch(
         // This block will set the `sender_correct` variable to `true` at the first match.
         let mut sender_correct = false;
         for signature in &batch_sign_data.signatures {
-            let mut signature_correct = verify_ethereum_signature(
+            let signature_correct = verify_ethereum_signature(
                 signature,
                 &batch_sign_data.message,
                 *sender,
                 eth_checker,
             )
             .await;
-            if !signature_correct {
-                if let Some(old_message) = &old_message {
-                    signature_correct = verify_ethereum_signature(
-                        signature,
-                        old_message.as_slice(),
-                        *sender,
-                        eth_checker,
-                    )
-                    .await;
-                }
-            }
             if signature_correct {
                 signers.insert(sender);
                 sender_correct = true;
@@ -295,14 +267,51 @@ async fn verify_eth_signature_txs_batch(
 
 /// Verifies the correctness of the ZKSync transaction(s) (including the
 /// signature check).
-fn verify_tx_correctness(tx: &mut TxVariant) -> Result<(), TxAddError> {
+async fn verify_tx_correctness(tx: &mut TxVariant) -> Result<(), TxAddError> {
     match tx {
         TxVariant::Tx(tx) => {
-            tx.tx.check_correctness()?;
+            let sender_account = tx.tx.account();
+            let receiver_account = tx.tx.to_account().unwrap();
+            let mut storage = StorageProcessor::establish_connection().await.unwrap();
+            let sender_autorisation = storage
+                .chain()
+                .account_schema()
+                .is_account_autorised(sender_account)
+                .await
+                .unwrap();
+
+            let receiver_autorisation = storage
+                .chain()
+                .account_schema()
+                .is_account_autorised(receiver_account)
+                .await
+                .unwrap();
+
+            tx.tx
+                .check_correctness(sender_autorisation, receiver_autorisation)?;
         }
         TxVariant::Batch(batch, _) => {
+            let mut storage = StorageProcessor::establish_connection().await.unwrap();
             for tx in batch.iter_mut() {
-                tx.tx.check_correctness()?;
+                let sender_account = tx.tx.account();
+                let receiver_account = tx.tx.to_account().unwrap();
+
+                let sender_autorisation = storage
+                    .chain()
+                    .account_schema()
+                    .is_account_autorised(sender_account)
+                    .await
+                    .unwrap();
+
+                let receiver_autorisation = storage
+                    .chain()
+                    .account_schema()
+                    .is_account_autorised(receiver_account)
+                    .await
+                    .unwrap();
+
+                tx.tx
+                    .check_correctness(sender_autorisation, receiver_autorisation)?;
             }
         }
         TxVariant::Order(order) => order
@@ -393,7 +402,6 @@ pub fn start_sign_checker(
             let eth_checker = eth_checker.clone();
             tokio::spawn(async move {
                 let resp = VerifiedTx::verify(data, &eth_checker).await;
-
                 response.send(resp).unwrap_or_default();
             });
         }

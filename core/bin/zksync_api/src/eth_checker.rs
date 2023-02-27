@@ -87,6 +87,27 @@ impl EthereumChecker {
             .map_err(|e| anyhow::format_err!("Failed to query contract authFacts: {}", e))?;
         Ok(auth_fact.as_slice() == tiny_keccak::keccak256(&pub_key_hash.data[..]))
     }
+
+    pub async fn is_user_allowed_to_transfer_to_this_group(
+        &self,
+        group: u16,
+        address: Address,
+    ) -> Result<bool, anyhow::Error> {
+        let allowed: bool = self
+            .client
+            .call_main_contract_function(
+                "isUserAllowedInGroup",
+                (group, address),
+                None,
+                Options::default(),
+                None,
+            )
+            .await
+            .map_err(|e| {
+                anyhow::format_err!("Failed to query contract isUserAllowedInGroup: {}", e)
+            })?;
+        Ok(allowed)
+    }
 }
 
 #[cfg(test)]

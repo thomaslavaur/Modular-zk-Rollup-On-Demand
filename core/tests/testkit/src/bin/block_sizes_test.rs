@@ -199,7 +199,7 @@ async fn main() {
         block.block_chunks_size = block_size;
 
         let timer = Instant::now();
-        let witness = build_block_witness(&mut circuit_account_tree, &block)
+        let witness = build_block_witness(&mut circuit_account_tree, &block, 1)
             .expect("failed to build block witness");
         assert_eq!(
             witness.root_after_fees.unwrap(),
@@ -272,7 +272,7 @@ async fn main() {
             block.block_chunks_size = block_size;
 
             let timer = Instant::now();
-            let witness = build_block_witness(&mut circuit_account_tree, &block)
+            let witness = build_block_witness(&mut circuit_account_tree, &block, 1)
                 .expect("failed to build block witness");
             assert_eq!(
                 witness.root_after_fees.unwrap(),

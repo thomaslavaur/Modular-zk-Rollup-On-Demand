@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use num::{bigint::ToBigInt, BigInt};
 use sqlx::types::BigDecimal;
 use zksync_types::{forced_exit_requests::ForcedExitRequest, tx::TxHash, TokenId};
+use zksync_utils::parse_env;
 
 use super::utils;
 
@@ -50,11 +51,13 @@ impl From<DbForcedExitRequest> for ForcedExitRequest {
 
         let tokens: Vec<TokenId> = utils::comma_list_to_vec(val.tokens);
         let fulfilled_by: Option<Vec<TxHash>> = val.fulfilled_by.map(utils::comma_list_to_vec);
+        let server_group_id = parse_env("SERVER_GROUP_ID");
 
         ForcedExitRequest {
             id: val.id,
             target: stored_str_address_to_address(&val.target),
             tokens,
+            group: server_group_id,
             price_in_wei,
             created_at: val.created_at,
             valid_until: val.valid_until,

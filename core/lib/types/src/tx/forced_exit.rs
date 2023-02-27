@@ -8,11 +8,11 @@ use zksync_crypto::{
     franklin_crypto::eddsa::PrivateKey,
     params::{max_account_id, max_fungible_token_id, max_processable_token, CURRENT_TX_VERSION},
 };
-use zksync_utils::{format_units, BigUintSerdeAsRadix10Str};
+use zksync_utils::{format_units, parse_env, BigUintSerdeAsRadix10Str};
 
 use super::{TxSignature, VerifiedSignatureCache};
 use crate::tx::error::{
-    FEE_AMOUNT_IS_NOT_PACKABLE, WRONG_ACCOUNT_ID, WRONG_FEE_ERROR, WRONG_SIGNATURE,
+    FEE_AMOUNT_IS_NOT_PACKABLE, WRONG_ACCOUNT_ID, WRONG_FEE_ERROR, WRONG_GROUP, WRONG_SIGNATURE,
     WRONG_TIME_RANGE, WRONG_TOKEN, WRONG_TOKEN_FOR_PAYING_FEE,
 };
 use crate::tx::version::TxVersion;
@@ -46,6 +46,8 @@ pub struct ForcedExit {
     /// Fee for the transaction.
     #[serde(with = "BigUintSerdeAsRadix10Str")]
     pub fee: BigUint,
+    /// Group id for transaction
+    pub group: u16,
     /// Current initiator account nonce.
     pub nonce: Nonce,
     /// Transaction zkSync signature.
@@ -71,6 +73,7 @@ impl ForcedExit {
         target: Address,
         token: TokenId,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         signature: Option<TxSignature>,
@@ -80,6 +83,7 @@ impl ForcedExit {
             target,
             token,
             fee,
+            group,
             nonce,
             time_range: Some(time_range),
             signature: signature.clone().unwrap_or_default(),
@@ -98,6 +102,7 @@ impl ForcedExit {
         target: Address,
         token: TokenId,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         private_key: &PrivateKey<Engine>,
@@ -107,6 +112,7 @@ impl ForcedExit {
             target,
             token,
             fee,
+            group,
             nonce,
             time_range,
             None,
@@ -116,32 +122,15 @@ impl ForcedExit {
         Ok(tx)
     }
 
-    /// Encodes the transaction data as the byte sequence according to the zkSync protocol.
-    pub fn get_old_bytes(&self) -> Vec<u8> {
-        let mut out = Vec::new();
-        out.extend_from_slice(&[Self::TX_TYPE]);
-        out.extend_from_slice(&self.initiator_account_id.to_be_bytes());
-        out.extend_from_slice(self.target.as_bytes());
-        out.extend_from_slice(&(self.token.0 as u16).to_be_bytes());
-        out.extend_from_slice(&pack_fee_amount(&self.fee));
-        out.extend_from_slice(&self.nonce.to_be_bytes());
-        out.extend_from_slice(&self.time_range.unwrap_or_default().as_be_bytes());
-        out
-    }
-
-    /// Encodes the transaction data as the byte sequence according to the zkSync protocol.
     pub fn get_bytes(&self) -> Vec<u8> {
-        self.get_bytes_with_version(CURRENT_TX_VERSION)
-    }
-
-    pub fn get_bytes_with_version(&self, version: u8) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&[255u8 - Self::TX_TYPE]);
-        out.extend_from_slice(&[version]);
+        out.extend_from_slice(&[CURRENT_TX_VERSION]);
         out.extend_from_slice(&self.initiator_account_id.to_be_bytes());
         out.extend_from_slice(self.target.as_bytes());
         out.extend_from_slice(&self.token.to_be_bytes());
         out.extend_from_slice(&pack_fee_amount(&self.fee));
+        out.extend_from_slice(&self.group.to_be_bytes());
         out.extend_from_slice(&self.nonce.to_be_bytes());
         out.extend_from_slice(&self.time_range.unwrap_or_default().as_be_bytes());
         out
@@ -152,13 +141,6 @@ impl ForcedExit {
         if let VerifiedSignatureCache::Cached(cached_signer) = &self.cached_signer {
             *cached_signer
         } else {
-            if let Some(res) = self
-                .signature
-                .verify_musig(&self.get_old_bytes())
-                .map(|pub_key| PubKeyHash::from_pubkey(&pub_key))
-            {
-                return Some((res, TxVersion::Legacy));
-            }
             self.signature
                 .verify_musig(&self.get_bytes())
                 .map(|pub_key| (PubKeyHash::from_pubkey(&pub_key), TxVersion::V1))
@@ -175,9 +157,10 @@ impl ForcedExit {
     /// Note that the second line is optional.
     pub fn get_ethereum_sign_message_part(&self, token_symbol: &str, decimals: u8) -> String {
         let mut message = format!(
-            "ForcedExit {token} to: {to:?}",
+            "ForcedExit {token} to: {to:?} on group: {group}",
             token = token_symbol,
-            to = self.target
+            to = self.target,
+            group = self.group
         );
         if !self.fee.is_zero() {
             message.push_str(
@@ -212,6 +195,7 @@ impl ForcedExit {
     /// - `fee` field must represent a packable value.
     /// - zkSync signature must correspond to the PubKeyHash of the account.
     pub fn check_correctness(&mut self) -> Result<(), TransactionError> {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         if self.fee > BigUint::from(u128::MAX) {
             return Err(TransactionError::WrongFee);
         }
@@ -220,6 +204,9 @@ impl ForcedExit {
         }
         if self.initiator_account_id > max_account_id() {
             return Err(TransactionError::WrongInitiatorAccountId);
+        }
+        if self.group != server_group_id {
+            return Err(TransactionError::WrongGroup);
         }
 
         if self.token > max_fungible_token_id() {
@@ -256,6 +243,7 @@ pub enum TransactionError {
     WrongTimeRange,
     WrongSignature,
     WrongTokenForPayingFee,
+    WrongGroup,
 }
 
 impl Display for TransactionError {
@@ -268,6 +256,7 @@ impl Display for TransactionError {
             TransactionError::WrongSignature => WRONG_SIGNATURE,
             TransactionError::WrongTokenForPayingFee => WRONG_TOKEN_FOR_PAYING_FEE,
             TransactionError::WrongInitiatorAccountId => WRONG_ACCOUNT_ID,
+            TransactionError::WrongGroup => WRONG_GROUP,
         };
         write!(f, "{}", error)
     }

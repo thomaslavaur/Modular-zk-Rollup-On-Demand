@@ -43,6 +43,7 @@ impl WithdrawOp {
         data.extend_from_slice(self.tx.to.as_bytes());
         data.extend_from_slice(&self.tx.token.to_be_bytes());
         data.extend_from_slice(&self.tx.amount.to_u128().unwrap().to_be_bytes());
+        data.extend_from_slice(&self.tx.group.to_be_bytes());
         data
     }
 
@@ -98,6 +99,7 @@ impl WithdrawOp {
                 TokenId(token),
                 amount,
                 fee,
+                Default::default(),
                 Nonce(nonce),
                 time_range,
                 None,

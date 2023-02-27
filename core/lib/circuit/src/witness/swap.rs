@@ -34,6 +34,7 @@ use crate::{
 #[derive(Debug)]
 pub struct OrderData {
     pub account: u32,
+    pub group: u16,
     pub nonce: u32,
     pub recipient: u32,
     pub recipient_address: Fr,
@@ -53,6 +54,7 @@ pub struct SwapData {
     pub fee_token: u32,
     pub submitter: u32,
     pub submitter_address: Fr,
+    pub group: u16,
     pub nonce: u32,
 }
 
@@ -81,6 +83,7 @@ impl Witness for SwapWitness<Bn256> {
             price_buy: swap.tx.orders.0.price.1.to_u128().unwrap(),
             valid_from: swap.tx.orders.0.time_range.valid_from,
             valid_until: swap.tx.orders.0.time_range.valid_until,
+            group: swap.tx.orders.0.group,
             nonce: *swap.tx.orders.0.nonce,
         };
 
@@ -93,6 +96,7 @@ impl Witness for SwapWitness<Bn256> {
             price_buy: swap.tx.orders.1.price.1.to_u128().unwrap(),
             valid_from: swap.tx.orders.1.time_range.valid_from,
             valid_until: swap.tx.orders.1.time_range.valid_until,
+            group: swap.tx.orders.1.group,
             nonce: *swap.tx.orders.1.nonce,
         };
 
@@ -110,6 +114,7 @@ impl Witness for SwapWitness<Bn256> {
             orders: (order_0, order_1),
             submitter: *swap.submitter as u32,
             submitter_address: eth_address_to_fr(&swap.tx.submitter_address),
+            group: swap.tx.group,
             nonce: *swap.tx.nonce,
         };
 
@@ -318,6 +323,8 @@ impl SwapWitness<Bn256> {
         let (special_amount_0_fe, special_amount_0_packed) = pack_amount(swap.orders.0.amount);
         let (special_amount_1_fe, special_amount_1_packed) = pack_amount(swap.orders.1.amount);
         let fee_fe = fr_from(swap.fee);
+
+        let group = fr_from(swap.group);
 
         let fee_bits = FloatConversions::to_float(
             swap.fee,
@@ -532,6 +539,7 @@ impl SwapWitness<Bn256> {
             args: OperationArguments {
                 amount_packed: Some(amount_0_packed),
                 second_amount_packed: Some(amount_1_packed),
+                group: Some(group),
                 special_nonces: vec![
                     Some(fr_from(swap.orders.0.nonce)),
                     Some(fr_from(swap.orders.1.nonce)),

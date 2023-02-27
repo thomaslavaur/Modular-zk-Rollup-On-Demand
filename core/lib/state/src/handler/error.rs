@@ -202,3 +202,22 @@ pub enum SwapOpError {
     #[error("Self-swap is not allowed")]
     SelfSwap,
 }
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum ChangeGroupOpError {
+    #[error("FeeToken id is not supported")]
+    InvalidFeeTokenId,
+    #[error("Token id is not supported")]
+    InvalidTokenId,
+    #[error("From account does not exist")]
+    FromAccountNotFound,
+    #[error("Account is locked")]
+    FromAccountLocked,
+    #[error("Withdraw signature is incorrect")]
+    InvalidSignature,
+    #[error("Withdraw account id is incorrect")]
+    FromAccountIncorrect,
+    #[error("Nonce mismatch")]
+    NonceMismatch,
+    #[error("Not enough balance")]
+    InsufficientBalance,
+}

@@ -55,6 +55,7 @@ impl BlocksCommitOperation {
                 ])
             })
             .collect();
+        //let group_id = Token::Uint(U256::from(1));
 
         vec![stored_block_info, Token::Array(blocks_to_commit)]
     }
@@ -85,6 +86,8 @@ impl BlocksProofOperation {
         let blocks_arg = Token::Array(self.blocks.iter().map(stored_block_info).collect());
 
         let proof = self.proof.get_eth_tx_args();
+
+        //let group_id = Token::Uint(U256::from(1));
 
         vec![blocks_arg, proof]
     }
@@ -121,6 +124,7 @@ impl BlocksExecuteOperation {
     pub fn get_eth_tx_args(&self) -> Vec<Token> {
         // Does not make automatic withdrawals in execute operation
         let complete_withdrawals = Token::Bool(false);
+        //let group_id = Token::Uint(U256::from(1));
         vec![
             Token::Array(
                 self.blocks
@@ -129,6 +133,7 @@ impl BlocksExecuteOperation {
                     .collect(),
             ),
             complete_withdrawals,
+            //group_id,
         ]
     }
 

@@ -21,6 +21,7 @@ use num::{bigint::ToBigInt, BigUint, Zero};
 use thiserror::Error;
 
 // Workspace uses
+use crate::eth_checker::EthereumChecker;
 use zksync_api_types::{
     v02::transaction::{SubmitBatchResponse, Toggle2FA, Toggle2FAResponse, TxHashSerializeWrapper},
     TxWithSignature,

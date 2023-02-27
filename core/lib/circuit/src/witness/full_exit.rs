@@ -7,6 +7,7 @@ use zksync_crypto::franklin_crypto::{
     rescue::RescueEngine,
 };
 // Workspace deps
+use zksync_crypto::params::GROUP_LEN;
 use zksync_crypto::{
     circuit::{
         account::CircuitAccountTree,
@@ -37,6 +38,7 @@ pub struct FullExitData {
     pub account_address: u32,
     pub eth_address: Fr,
     pub full_exit_amount: Fr,
+    pub group: u16,
     pub creator_account_id: u32,
     pub creator_account_address: Fr,
     pub nft_serial_id: u32,
@@ -66,6 +68,7 @@ impl Witness for FullExitWitness<Bn256> {
             token: *full_exit.priority_op.token as u32,
             account_address: *full_exit.priority_op.account_id,
             eth_address: eth_address_to_fr(&full_exit.priority_op.eth_address),
+            group: full_exit.priority_op.group as u16,
             full_exit_amount: full_exit
                 .withdraw_amount
                 .clone()
@@ -101,6 +104,7 @@ impl Witness for FullExitWitness<Bn256> {
             &self.before.token.unwrap(),
             TOKEN_BIT_WIDTH,
         );
+        append_be_fixed_width(&mut pubdata_bits, &self.args.group.unwrap(), GROUP_LEN * 8);
         append_be_fixed_width(
             &mut pubdata_bits,
             &self.args.full_amount.unwrap(),
@@ -241,6 +245,7 @@ impl FullExitWitness<Bn256> {
         let serial_id_fe = fr_from(full_exit.nft_serial_id);
         let account_address_fe = fr_from(full_exit.account_address);
         let token_fe = fr_from(full_exit.token);
+        let group = fr_from(full_exit.group);
 
         let (account_witness_before, account_witness_after, balance_before, balance_after) = {
             if is_success {
@@ -361,6 +366,7 @@ impl FullExitWitness<Bn256> {
             args: OperationArguments {
                 eth_address: Some(full_exit.eth_address),
                 full_amount: Some(full_exit.full_exit_amount),
+                group: Some(group),
                 special_eth_addresses: vec![
                     Some(full_exit.creator_account_address),
                     Some(Fr::zero()),

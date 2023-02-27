@@ -125,7 +125,6 @@ fn test_new_transpile_deposit_franklin_existing_account_validate_only() {
     witness_accum.collect_fees(&Vec::new());
     witness_accum.calculate_pubdata_commitment();
 
-    println!("pubdata commitment: {:?}", witness_accum.pubdata_commitment);
     assert_eq!(
         plasma_state.root_hash(),
         witness_accum

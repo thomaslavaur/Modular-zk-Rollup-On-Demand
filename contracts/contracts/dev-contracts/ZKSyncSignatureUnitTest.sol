@@ -15,14 +15,6 @@ contract ZKSyncSignatureUnitTest is ZkSync {
         return verifyChangePubkeyECRECOVER(_witness, _changePk);
     }
 
-    function changePubkeySignatureCheckCREATE2(Operations.ChangePubKey memory _changePk, bytes memory _witness)
-        external
-        pure
-        returns (bool)
-    {
-        return verifyChangePubkeyCREATE2(_witness, _changePk);
-    }
-
     function testRecoverAddressFromEthSignature(bytes memory _signature, bytes32 _messageHash)
         external
         pure

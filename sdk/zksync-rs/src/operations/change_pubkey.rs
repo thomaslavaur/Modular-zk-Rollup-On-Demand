@@ -18,6 +18,7 @@ pub struct ChangePubKeyBuilder<'a, S: EthereumSigner, P: Provider> {
     onchain_auth: bool,
     fee_token: Option<Token>,
     fee: Option<BigUint>,
+    group: Option<u16>,
     nonce: Option<Nonce>,
     valid_from: Option<u32>,
     valid_until: Option<u32>,
@@ -35,6 +36,7 @@ where
             onchain_auth: false,
             fee_token: None,
             fee: None,
+            group: None,
             nonce: None,
             valid_from: None,
             valid_until: None,
@@ -71,6 +73,10 @@ where
             }
         };
 
+        let group = self
+            .group
+            .ok_or_else(|| ClientError::MissingRequiredField("group".into()))?;
+
         let nonce = match self.nonce {
             Some(nonce) => nonce,
             None => {
@@ -88,7 +94,7 @@ where
         Ok(ZkSyncTx::from(
             self.wallet
                 .signer
-                .sign_change_pubkey_tx(nonce, self.onchain_auth, fee_token, fee, time_range)
+                .sign_change_pubkey_tx(nonce, self.onchain_auth, fee_token, fee, group, time_range)
                 .await
                 .map_err(ClientError::SigningError)?,
         ))
@@ -141,6 +147,12 @@ where
         self.fee = Some(fee);
 
         Ok(self)
+    }
+
+    /// Sets the transaction group.
+    pub fn group(mut self, group: u16) -> Self {
+        self.group = Some(group);
+        self
     }
 
     /// Sets the transaction nonce.

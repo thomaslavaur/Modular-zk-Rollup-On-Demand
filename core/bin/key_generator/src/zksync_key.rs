@@ -92,6 +92,8 @@ fn zksync_circuit(block_chunks: usize) -> impl Circuit<Engine> + Clone {
         args: OperationArguments {
             a: None,
             b: None,
+            group: None,
+            group2: None,
             amount_packed: None,
             second_amount_packed: None,
             special_amounts: vec![None; 2],
@@ -149,8 +151,9 @@ fn zksync_circuit(block_chunks: usize) -> impl Circuit<Engine> + Clone {
         initial_used_subtree_root: None,
         validator_address: None,
         block_number: None,
+        group_id: None,
         block_timestamp: None,
-        pub_data_commitment: None,
+        pub_data_commitment_and_group: None,
         validator_balances: vec![None; params::number_of_processable_tokens()],
         validator_audit_path: vec![None; params::account_tree_depth()],
         validator_non_processable_tokens_audit_before_fees: vec![

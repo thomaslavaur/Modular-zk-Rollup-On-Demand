@@ -37,6 +37,7 @@ pub struct WithdrawData {
     pub token: u32,
     pub account_address: u32,
     pub eth_address: Fr,
+    pub group: u16,
     pub valid_from: u64,
     pub valid_until: u64,
 }
@@ -64,6 +65,7 @@ impl Witness for WithdrawWitness<Bn256> {
             fee: withdraw.tx.fee.to_u128().unwrap(),
             token: *withdraw.tx.token as u32,
             account_address: *withdraw.account_id,
+            group: withdraw.tx.group,
             eth_address: eth_address_to_fr(&withdraw.tx.to),
             valid_from,
             valid_until,
@@ -103,6 +105,7 @@ impl Witness for WithdrawWitness<Bn256> {
             &self.args.eth_address.unwrap(),
             ETH_ADDRESS_BIT_WIDTH,
         );
+
         resize_grow_only(
             &mut pubdata_bits,
             WithdrawOp::CHUNKS * CHUNK_BIT_WIDTH,
@@ -172,7 +175,7 @@ impl WithdrawWitness<Bn256> {
         let account_address_fe = fr_from(withdraw.account_address);
         let token_fe = fr_from(withdraw.token);
         let amount_as_field_element = fr_from(withdraw.amount);
-
+        let group = fr_from(withdraw.group);
         let amount_bits = FloatConversions::to_float(
             withdraw.amount,
             AMOUNT_EXPONENT_BIT_WIDTH,
@@ -250,6 +253,7 @@ impl WithdrawWitness<Bn256> {
                 fee: Some(fee_encoded),
                 a: Some(a),
                 b: Some(b),
+                group: Some(group),
                 valid_from: Some(fr_from(withdraw.valid_from)),
                 valid_until: Some(fr_from(withdraw.valid_until)),
                 ..Default::default()

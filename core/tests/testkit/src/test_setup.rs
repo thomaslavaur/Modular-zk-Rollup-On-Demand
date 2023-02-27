@@ -524,6 +524,7 @@ impl TestSetup {
             account,
             fee_token.0,
             fee,
+            1,
             None,
             true,
             Default::default(),
@@ -573,6 +574,7 @@ impl TestSetup {
                 account,
                 fee_token.0,
                 fee,
+                1,
                 None,
                 true,
                 Default::default(),
@@ -606,9 +608,16 @@ impl TestSetup {
             .insert((self.accounts.fee_account_id, fee_token.0), zksync0_old);
 
         let token_id = self.get_last_committed_nft_id().await;
-        let mint_nft =
-            self.accounts
-                .mint_nft(creator, recipient, fee_token, content_hash, fee, None, true);
+        let mint_nft = self.accounts.mint_nft(
+            creator,
+            recipient,
+            fee_token,
+            content_hash,
+            fee,
+            1,
+            None,
+            true,
+        );
 
         self.expected_changes_for_current_block
             .sync_accounts_state

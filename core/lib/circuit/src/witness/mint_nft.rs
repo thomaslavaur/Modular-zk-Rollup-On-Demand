@@ -44,6 +44,7 @@ pub struct MintNFTData {
     pub creator_account_id: u32,
     pub recipient_account_id: u32,
     pub content_hash: H256,
+    pub group: u16,
 }
 
 pub struct MintNFTWitness<E: RescueEngine> {
@@ -74,6 +75,7 @@ impl Witness for MintNFTWitness<Bn256> {
             creator_account_id: *mint_nft.creator_account_id,
             recipient_account_id: *mint_nft.recipient_account_id,
             content_hash: mint_nft.tx.content_hash,
+            group: mint_nft.tx.group,
         };
         Self::apply_data(tree, &mint_nft_data)
     }
@@ -224,7 +226,7 @@ impl MintNFTWitness<Bn256> {
         )
         .unwrap();
         let fee_encoded: Fr = le_bit_vector_into_field_element(&fee_bits);
-
+        let group = fr_from(&mint_nft.group);
         let before_first_chunk_root = tree.root_hash();
         vlog::debug!("Initial root = {}", before_first_chunk_root);
 
@@ -435,6 +437,7 @@ impl MintNFTWitness<Bn256> {
                 fee: Some(fee_encoded),
                 a: Some(a),
                 b: Some(b),
+                group: Some(group),
                 special_eth_addresses: vec![
                     Some(
                         recipient_account_witness_before_fifth_chunk

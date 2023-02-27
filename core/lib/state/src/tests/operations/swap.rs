@@ -67,6 +67,7 @@ impl TestSwap {
         let order_0 = Order::new_signed(
             *account_0_id,
             recipient_0.address,
+            1,
             account_0.nonce,
             token_0,
             token_1,
@@ -83,6 +84,7 @@ impl TestSwap {
         let order_1 = Order::new_signed(
             *account_1_id,
             recipient_1.address,
+            1,
             account_1.nonce,
             token_1,
             token_0,
@@ -99,6 +101,7 @@ impl TestSwap {
         let swap = Swap::new_signed(
             *submitter_id,
             submitter.address,
+            1,
             submitter.nonce,
             (order_0, order_1),
             (BigUint::from(self.amounts.0), BigUint::from(self.amounts.1)),

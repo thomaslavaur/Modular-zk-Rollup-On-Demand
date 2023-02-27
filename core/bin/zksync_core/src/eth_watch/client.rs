@@ -9,12 +9,13 @@ use web3::{
     types::{BlockNumber, FilterBuilder, Log},
     Web3,
 };
-
 use zksync_contracts::{governance_contract, zksync_contract};
 use zksync_eth_client::ethereum_gateway::EthereumGateway;
 use zksync_types::{
-    Address, NewTokenEvent, Nonce, PriorityOp, RegisterNFTFactoryEvent, H160, U256,
+    Address, NewTokenEvent, Nonce, PriorityOp, RegisterNFTFactoryEvent, ZkSyncPriorityOp, H160,
+    U256,
 };
+use zksync_utils::parse_env;
 
 struct ContractTopics {
     new_priority_request: Hash,
@@ -134,56 +135,90 @@ impl EthClient for EthHttpClient {
         to: BlockNumber,
     ) -> anyhow::Result<Vec<PriorityOp>> {
         let start = Instant::now();
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
 
-        let result = self
+        let result: anyhow::Result<Vec<PriorityOp>> = self
             .get_events(from, to, vec![self.topics.new_priority_request])
             .await;
 
-        if let Err(err) = &result {
-            // Check whether the error is related to way too many results being returned.
-            const LIMIT_ERR: &str = "query returned more than";
-            if err.to_string().contains(LIMIT_ERR) {
-                // OK, we've got too many results.
+        match &result {
+            Ok(vec) => {
+                let result2 = vec
+                    .clone()
+                    .into_iter()
+                    .filter(|event| match &event.data {
+                        ZkSyncPriorityOp::Deposit(dep) => {
+                            if dep.group == server_group_id {
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ZkSyncPriorityOp::FullExit(full) => {
+                            if full.group == server_group_id {
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ZkSyncPriorityOp::FullChangeGroup(full) => {
+                            if full.group1 == server_group_id {
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    })
+                    .collect();
+                metrics::histogram!("eth_watcher.get_priority_op_events", start.elapsed());
+                return Ok(result2);
+            }
+            Err(err) => {
+                // Check whether the error is related to way too many results being returned.
+                const LIMIT_ERR: &str = "query returned more than";
+                if err.to_string().contains(LIMIT_ERR) {
+                    // OK, we've got too many results.
 
-                // Get the numeric block IDs.
-                let from_number = match from {
-                    BlockNumber::Number(num) => num,
-                    _ => {
-                        // We don't expect not number identifiers for the "from" block
-                        return result;
-                    }
-                };
-                let to_number = match to {
-                    BlockNumber::Number(num) => num,
-                    BlockNumber::Latest => self.client.block_number().await?,
-                    _ => {
-                        // We don't expect other variants.
-                        return result;
-                    }
-                };
+                    // Get the numeric block IDs.
+                    let from_number = match from {
+                        BlockNumber::Number(num) => num,
+                        _ => {
+                            // We don't expect not number identifiers for the "from" block
+                            return result;
+                        }
+                    };
+                    let to_number = match to {
+                        BlockNumber::Number(num) => num,
+                        BlockNumber::Latest => self.client.block_number().await?,
+                        _ => {
+                            // We don't expect other variants.
+                            return result;
+                        }
+                    };
 
-                // Now we have to divide the range into two halfs and recursively try to get it.
-                if to_number <= from_number || to_number - from_number == 1.into() {
-                    // We can't divide ranges anymore.
-                    anyhow::bail!("Got too much events in one block");
+                    // Now we have to divide the range into two halfs and recursively try to get it.
+                    if to_number <= from_number || to_number - from_number == 1.into() {
+                        // We can't divide ranges anymore.
+                        anyhow::bail!("Got too much events in one block");
+                    }
+
+                    let range_diff = to_number - from_number;
+                    let mid = from_number + (range_diff / 2u64);
+
+                    // We divide range in two halves and merge results.
+                    // If half of the range still has too many events, it'd be split further recursively.
+                    // Note: ranges are inclusive, that's why `+ 1`.
+                    let mut first_half = self
+                        .get_priority_op_events(from, BlockNumber::Number(mid))
+                        .await?;
+                    let mut second_half = self
+                        .get_priority_op_events(BlockNumber::Number(mid + 1u64), to)
+                        .await?;
+
+                    first_half.append(&mut second_half);
+
+                    return Ok(first_half);
                 }
-
-                let range_diff = to_number - from_number;
-                let mid = from_number + (range_diff / 2u64);
-
-                // We divide range in two halves and merge results.
-                // If half of the range still has too many events, it'd be split further recursively.
-                // Note: ranges are inclusive, that's why `+ 1`.
-                let mut first_half = self
-                    .get_priority_op_events(from, BlockNumber::Number(mid))
-                    .await?;
-                let mut second_half = self
-                    .get_priority_op_events(BlockNumber::Number(mid + 1u64), to)
-                    .await?;
-
-                first_half.append(&mut second_half);
-
-                return Ok(first_half);
             }
         }
 

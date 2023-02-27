@@ -1,3 +1,4 @@
+use zksync_crypto::bellman::Circuit;
 // External deps
 use zksync_crypto::franklin_crypto::{
     bellman::{
@@ -121,6 +122,7 @@ pub struct AllocatedOperationData<E: Engine> {
     pub pub_nonce: CircuitElement<E>,
     pub a: CircuitElement<E>,
     pub b: CircuitElement<E>,
+    pub group2: CircuitElement<E>,
     pub valid_from: CircuitElement<E>,
     pub valid_until: CircuitElement<E>,
     pub second_valid_from: CircuitElement<E>,
@@ -221,6 +223,11 @@ impl<E: RescueEngine> AllocatedOperationData<E> {
             franklin_constants::BALANCE_BIT_WIDTH,
         );
 
+        let group = CircuitElement::unsafe_empty_of_some_length(
+            zero_element.clone(),
+            franklin_constants::GROUP_LEN * 8,
+        );
+
         let valid_from = CircuitElement::unsafe_empty_of_some_length(
             zero_element.clone(),
             franklin_constants::TIMESTAMP_BIT_WIDTH,
@@ -256,6 +263,7 @@ impl<E: RescueEngine> AllocatedOperationData<E> {
             pub_nonce,
             a,
             b,
+            group2: group,
             valid_from: valid_from.clone(),
             valid_until: valid_until.clone(),
             second_valid_from: valid_from,
@@ -369,6 +377,12 @@ impl<E: RescueEngine> AllocatedOperationData<E> {
             franklin_constants::FEE_EXPONENT_BIT_WIDTH + franklin_constants::FEE_MANTISSA_BIT_WIDTH,
         )?;
 
+        let group = CircuitElement::from_fe_with_known_length(
+            cs.namespace(|| "group2"),
+            || op.args.group2.grab(),
+            franklin_constants::GROUP_LEN * 8,
+        )?;
+
         let fee_parsed = parse_with_exponent_le(
             cs.namespace(|| "parse fee"),
             &fee_packed.get_bits_le(),
@@ -393,13 +407,11 @@ impl<E: RescueEngine> AllocatedOperationData<E> {
             || op.second_sig_msg.grab(),
             E::Fr::CAPACITY as usize, //TODO: think of more consistent constant flow (ZKS-54).
         )?;
-
         let third_sig_msg = CircuitElement::from_fe_with_known_length(
             cs.namespace(|| "third_part_signature_message"),
             || op.third_sig_msg.grab(),
             franklin_constants::MAX_CIRCUIT_MSG_HASH_BITS - (2 * E::Fr::CAPACITY as usize), //TODO: think of more consistent constant flow (ZKS-54).
         )?;
-
         let new_pubkey_hash = CircuitElement::from_fe_with_known_length(
             cs.namespace(|| "new_pubkey_hash"),
             || op.args.new_pub_key_hash.grab(),
@@ -467,6 +479,7 @@ impl<E: RescueEngine> AllocatedOperationData<E> {
             pub_nonce,
             a,
             b,
+            group2: group,
             valid_from,
             valid_until,
             second_valid_from,

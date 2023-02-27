@@ -52,6 +52,7 @@ pub(crate) async fn affected_accounts(
         }
         ZkSyncTx::MintNFT(tx) => vec![tx.creator_address, tx.recipient],
         ZkSyncTx::WithdrawNFT(tx) => vec![tx.from, tx.to],
+        ZkSyncTx::ChangeGroup(tx) => vec![tx.from, tx.to],
     };
     accounts.sort();
     accounts.dedup();

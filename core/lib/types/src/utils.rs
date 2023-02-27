@@ -85,7 +85,7 @@ pub mod h256_as_vec {
 /// Construct the first part of the message that should be signed by Ethereum key.
 /// The pattern is as follows:
 ///
-/// [{Transfer/Withdraw} {amount} {token} to: {to_address}]
+/// [{Transfer/Withdraw} {amount} {token} to: {to_address} on group: {group}]
 /// [Fee: {fee} {token}]
 ///
 /// Note that both lines are optional.
@@ -96,14 +96,16 @@ pub fn ethereum_sign_message_part(
     amount: &BigUint,
     fee: &BigUint,
     to: &Address,
+    group: u16,
 ) -> String {
     let mut message = if !amount.is_zero() {
         format!(
-            "{transaction} {amount} {token} to: {to:?}",
+            "{transaction} {amount} {token} to: {to:?} on group: {group}",
             transaction = transaction,
             amount = format_units(amount, decimals),
             token = token_symbol,
-            to = to
+            to = to,
+            group = group
         )
     } else {
         String::new()

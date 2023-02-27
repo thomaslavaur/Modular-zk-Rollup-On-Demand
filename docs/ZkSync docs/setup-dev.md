@@ -136,8 +136,8 @@ Also, we need `[sqlx](https://github.com/launchbadge/sqlx)` CLI (it is used to
 cargo install --version=0.5.6 sqlx-cli
 ```
 
-If you face an error `Could not find directory of OpenSSL installation`, then you should do the following.
-The instruction is targeted on debian-based Linux, but generally, the steps are similar for all OS.
+If you face an error `Could not find directory of OpenSSL installation`, then you should do the following. The
+instruction is targeted on debian-based Linux, but generally, the steps are similar for all OS.
 
 - Install `libssl-dev`:
 

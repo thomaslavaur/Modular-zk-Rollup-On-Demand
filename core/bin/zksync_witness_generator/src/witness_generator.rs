@@ -14,6 +14,7 @@ use zksync_crypto::params::account_tree_depth;
 use zksync_types::block::Block;
 use zksync_types::BlockNumber;
 use zksync_utils::panic_notify::ThreadPanicNotify;
+use zksync_utils::parse_env;
 
 /// The essential part of this structure is `maintain` function
 /// which runs forever and adds data to the database.
@@ -163,7 +164,6 @@ impl<DB: DatabaseInterface> WitnessGenerator<DB> {
                 let start = Instant::now();
                 let tree_cache = circuit_account_tree.get_internals().encode_bincode();
                 metrics::histogram!("tree_cache_size", tree_cache.len() as f64);
-
                 self.database
                     .store_account_tree_cache(&mut storage, block, tree_cache)
                     .await?;
@@ -225,7 +225,9 @@ impl<DB: DatabaseInterface> WitnessGenerator<DB> {
         metrics::histogram!("witness_generator", start.elapsed(), "stage" => "load_tree_full");
 
         let start = Instant::now();
-        let witness: ProverData = build_block_witness(&mut circuit_account_tree, &block)?.into();
+        let server_group_id = parse_env("SERVER_GROUP_ID");
+        let witness: ProverData =
+            build_block_witness(&mut circuit_account_tree, &block, server_group_id)?.into();
         metrics::histogram!("witness_generator", start.elapsed(), "stage" => "build_witness");
 
         let start = Instant::now();

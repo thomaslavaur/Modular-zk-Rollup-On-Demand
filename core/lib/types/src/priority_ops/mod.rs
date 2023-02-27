@@ -8,12 +8,13 @@ use std::convert::{TryFrom, TryInto};
 use zksync_basic_types::{Address, Log, H256, U256};
 use zksync_crypto::params::{
     ACCOUNT_ID_BIT_WIDTH, BALANCE_BIT_WIDTH, CONTENT_HASH_WIDTH, ETH_ADDRESS_BIT_WIDTH,
-    FR_ADDRESS_LEN, LEGACY_TOKEN_BIT_WIDTH, SERIAL_ID_WIDTH, TOKEN_BIT_WIDTH, TX_TYPE_BIT_WIDTH,
+    FR_ADDRESS_LEN, GROUP_LEN, LEGACY_TOKEN_BIT_WIDTH, SERIAL_ID_WIDTH, TOKEN_BIT_WIDTH,
+    TX_TYPE_BIT_WIDTH,
 };
 use zksync_utils::BigUintSerdeAsRadix10Str;
 
 use super::{
-    operations::{DepositOp, FullExitOp},
+    operations::{DepositOp, FullChangeGroupOp, FullExitOp},
     tx::TxHash,
     utils::h256_as_vec,
     AccountId, SerialId, TokenId,
@@ -39,6 +40,8 @@ pub struct Deposit {
     pub amount: BigUint,
     /// Address of L2 account to deposit funds to.
     pub to: Address,
+
+    pub group: u16,
 }
 
 /// Performs a withdrawal of funds without direct interaction with the L2 network.
@@ -48,6 +51,24 @@ pub struct FullExit {
     pub account_id: AccountId,
     pub eth_address: Address,
     pub token: TokenId,
+    pub group: u16,
+    /// A flag that indicates whether the operation was performed
+    /// before the NFT upgrade with an old number of required block chunks.
+    /// Only serialized manually by the `data_restore`, `false` by default.
+    #[serde(default)]
+    #[serde(skip_serializing)]
+    pub is_legacy: bool,
+}
+
+/// Performs a change_group without direct interaction with the L2 network.
+/// All the balance of the desired token will be withdrawn to the provided group.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FullChangeGroup {
+    pub account_id: AccountId,
+    pub eth_address: Address,
+    pub token: TokenId,
+    pub group1: u16,
+    pub group2: u16,
     /// A flag that indicates whether the operation was performed
     /// before the NFT upgrade with an old number of required block chunks.
     /// Only serialized manually by the `data_restore`, `false` by default.
@@ -62,6 +83,7 @@ pub struct FullExit {
 pub enum ZkSyncPriorityOp {
     Deposit(Deposit),
     FullExit(FullExit),
+    FullChangeGroup(FullChangeGroup),
 }
 
 impl ZkSyncPriorityOp {
@@ -79,6 +101,7 @@ impl ZkSyncPriorityOp {
         match self {
             ZkSyncPriorityOp::Deposit(deposit) => deposit.token,
             ZkSyncPriorityOp::FullExit(full_exit) => full_exit.token,
+            ZkSyncPriorityOp::FullChangeGroup(full_change_group) => full_change_group.token,
         }
     }
 
@@ -86,6 +109,7 @@ impl ZkSyncPriorityOp {
         match self {
             ZkSyncPriorityOp::Deposit(deposit) => deposit.from,
             ZkSyncPriorityOp::FullExit(full_exit) => full_exit.eth_address,
+            ZkSyncPriorityOp::FullChangeGroup(full_change_group) => full_change_group.eth_address,
         }
     }
 
@@ -93,6 +117,7 @@ impl ZkSyncPriorityOp {
         match self {
             ZkSyncPriorityOp::Deposit(deposit) => deposit.to,
             ZkSyncPriorityOp::FullExit(full_exit) => full_exit.eth_address,
+            ZkSyncPriorityOp::FullChangeGroup(full_change_group) => full_change_group.eth_address,
         }
     }
 
@@ -100,6 +125,9 @@ impl ZkSyncPriorityOp {
         let mut accounts = match self {
             ZkSyncPriorityOp::Deposit(deposit) => vec![deposit.from, deposit.to],
             ZkSyncPriorityOp::FullExit(full_exit) => vec![full_exit.eth_address],
+            ZkSyncPriorityOp::FullChangeGroup(full_change_group) => {
+                vec![full_change_group.eth_address]
+            }
         };
         accounts.sort();
         accounts.dedup();
@@ -160,6 +188,14 @@ impl ZkSyncPriorityOp {
                     (Address::from_slice(account), left)
                 };
 
+                let (group, pub_data_left) = {
+                    if pub_data_left.len() < GROUP_LEN {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (group, left) = pub_data_left.split_at(GROUP_LEN);
+                    (u16::from_be_bytes(group.try_into().unwrap()), left)
+                };
+
                 if !pub_data_left.is_empty() {
                     return Err(LogParseError::PubdataLengthMismatch);
                 }
@@ -169,6 +205,7 @@ impl ZkSyncPriorityOp {
                     token: TokenId(token as u32),
                     amount,
                     to: account,
+                    group,
                 }))
             }
             FullExitOp::OP_CODE => {
@@ -209,16 +246,103 @@ impl ZkSyncPriorityOp {
                     (u16::from_be_bytes(token.try_into().unwrap()), left)
                 };
 
+                let (group, pub_data_left) = {
+                    if pub_data_left.len() < GROUP_LEN {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (group, left) = pub_data_left.split_at(GROUP_LEN);
+                    (u16::from_be_bytes(group.try_into().unwrap()), left)
+                };
+
                 // amount
-                if pub_data_left.len() != BALANCE_BIT_WIDTH / 8 {
-                    return Err(LogParseError::PubdataLengthMismatch);
-                }
+                let (_amount, _pub_data_left) = {
+                    if pub_data_left.len() < BALANCE_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (amount, left) = pub_data_left.split_at(BALANCE_BIT_WIDTH / 8);
+                    let amount = u128::from_be_bytes(amount.try_into().unwrap());
+                    (BigUint::from(amount), left)
+                };
 
                 Ok(Self::FullExit(FullExit {
                     account_id: AccountId(account_id),
                     eth_address,
                     token: TokenId(token as u32),
                     is_legacy: false,
+                    group: group as u16,
+                }))
+            }
+            FullChangeGroupOp::OP_CODE => {
+                let mut pub_data_left = pub_data;
+
+                if with_tx_type {
+                    if pub_data_left.len() < TX_TYPE_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (_, _pub_data_left) = pub_data_left.split_at(TX_TYPE_BIT_WIDTH / 8);
+                    pub_data_left = _pub_data_left;
+                }
+
+                // account_id
+                let (account_id, pub_data_left) = {
+                    if pub_data_left.len() < ACCOUNT_ID_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (account_id, left) = pub_data_left.split_at(ACCOUNT_ID_BIT_WIDTH / 8);
+                    (u32::from_bytes(account_id).unwrap(), left)
+                };
+
+                // owner
+                let (eth_address, pub_data_left) = {
+                    if pub_data_left.len() < ETH_ADDRESS_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (eth_address, left) = pub_data_left.split_at(ETH_ADDRESS_BIT_WIDTH / 8);
+                    (Address::from_slice(eth_address), left)
+                };
+
+                // token
+                let (token, pub_data_left) = {
+                    if pub_data_left.len() < LEGACY_TOKEN_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (token, left) = pub_data_left.split_at(LEGACY_TOKEN_BIT_WIDTH / 8);
+                    (u16::from_be_bytes(token.try_into().unwrap()), left)
+                };
+
+                let (group1, pub_data_left) = {
+                    if pub_data_left.len() < GROUP_LEN {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (group1, left) = pub_data_left.split_at(GROUP_LEN);
+                    (u16::from_be_bytes(group1.try_into().unwrap()), left)
+                };
+
+                let (group2, pub_data_left) = {
+                    if pub_data_left.len() < GROUP_LEN {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (group2, left) = pub_data_left.split_at(GROUP_LEN);
+                    (u16::from_be_bytes(group2.try_into().unwrap()), left)
+                };
+
+                // amount
+                let (_amount, _pub_data_left) = {
+                    if pub_data_left.len() < BALANCE_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (amount, left) = pub_data_left.split_at(BALANCE_BIT_WIDTH / 8);
+                    let amount = u128::from_be_bytes(amount.try_into().unwrap());
+                    (BigUint::from(amount), left)
+                };
+
+                Ok(Self::FullChangeGroup(FullChangeGroup {
+                    account_id: AccountId(account_id),
+                    eth_address,
+                    token: TokenId(token as u32),
+                    is_legacy: false,
+                    group1: group1 as u16,
+                    group2: group2 as u16,
                 }))
             }
             _ => Err(LogParseError::UnsupportedPriorityOpType),
@@ -275,6 +399,14 @@ impl ZkSyncPriorityOp {
                     (Address::from_slice(account), left)
                 };
 
+                let (group, pub_data_left) = {
+                    if pub_data_left.len() < GROUP_LEN {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (group, left) = pub_data_left.split_at(GROUP_LEN);
+                    (u16::from_be_bytes(group.try_into().unwrap()), left)
+                };
+
                 if !pub_data_left.is_empty() {
                     return Err(LogParseError::PubdataLengthMismatch);
                 }
@@ -284,6 +416,7 @@ impl ZkSyncPriorityOp {
                     token: TokenId(token),
                     amount,
                     to: account,
+                    group,
                 }))
             }
             FullExitOp::OP_CODE => {
@@ -319,12 +452,25 @@ impl ZkSyncPriorityOp {
                     (u32::from_be_bytes(token.try_into().unwrap()), left)
                 };
 
-                // amount
-                if pub_data_left.len() < BALANCE_BIT_WIDTH / 8 {
-                    return Err(LogParseError::PubdataLengthMismatch);
-                }
+                // group
+                let (group, pub_data_left) = {
+                    if pub_data_left.len() < GROUP_LEN {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (group, left) = pub_data_left.split_at(GROUP_LEN);
+                    (u16::from_be_bytes(group.try_into().unwrap()), left)
+                };
 
-                let (_, pub_data_left) = pub_data_left.split_at(BALANCE_BIT_WIDTH / 8);
+                // amount
+                let (_amount, pub_data_left) = {
+                    if pub_data_left.len() < BALANCE_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (amount, left) = pub_data_left.split_at(BALANCE_BIT_WIDTH / 8);
+                    let amount = u128::from_be_bytes(amount.try_into().unwrap());
+                    (BigUint::from(amount), left)
+                };
+                //let (_, pub_data_left) = pub_data_left.split_at(BALANCE_BIT_WIDTH / 8);
 
                 // Creator account ID, creator address, serial id, content hash
                 if pub_data_left.len()
@@ -335,12 +481,91 @@ impl ZkSyncPriorityOp {
                 {
                     return Err(LogParseError::PubdataLengthMismatch);
                 }
-
                 Ok(Self::FullExit(FullExit {
                     account_id: AccountId(account_id),
                     eth_address,
                     token: TokenId(token),
                     is_legacy: false,
+                    group,
+                }))
+            }
+            FullChangeGroupOp::OP_CODE => {
+                if pub_data.len() < TX_TYPE_BIT_WIDTH / 8 {
+                    return Err(LogParseError::PubdataLengthMismatch);
+                }
+                let (_, pub_data_left) = pub_data.split_at(TX_TYPE_BIT_WIDTH / 8);
+
+                // account_id
+                let (account_id, pub_data_left) = {
+                    if pub_data_left.len() < ACCOUNT_ID_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (account_id, left) = pub_data_left.split_at(ACCOUNT_ID_BIT_WIDTH / 8);
+                    (u32::from_bytes(account_id).unwrap(), left)
+                };
+
+                // owner
+                let (eth_address, pub_data_left) = {
+                    if pub_data_left.len() < ETH_ADDRESS_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (eth_address, left) = pub_data_left.split_at(ETH_ADDRESS_BIT_WIDTH / 8);
+                    (Address::from_slice(eth_address), left)
+                };
+
+                // token
+                let (token, pub_data_left) = {
+                    if pub_data_left.len() < TOKEN_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (token, left) = pub_data_left.split_at(TOKEN_BIT_WIDTH / 8);
+                    (u32::from_be_bytes(token.try_into().unwrap()), left)
+                };
+
+                // group
+                let (group1, pub_data_left) = {
+                    if pub_data_left.len() < GROUP_LEN {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (group1, left) = pub_data_left.split_at(GROUP_LEN);
+                    (u16::from_be_bytes(group1.try_into().unwrap()), left)
+                };
+
+                let (group2, pub_data_left) = {
+                    if pub_data_left.len() < GROUP_LEN {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (group2, left) = pub_data_left.split_at(GROUP_LEN);
+                    (u16::from_be_bytes(group2.try_into().unwrap()), left)
+                };
+
+                // amount
+                let (_amount, pub_data_left) = {
+                    if pub_data_left.len() < BALANCE_BIT_WIDTH / 8 {
+                        return Err(LogParseError::PubdataLengthMismatch);
+                    }
+                    let (amount, left) = pub_data_left.split_at(BALANCE_BIT_WIDTH / 8);
+                    let amount = u128::from_be_bytes(amount.try_into().unwrap());
+                    (BigUint::from(amount), left)
+                };
+                //let (_, pub_data_left) = pub_data_left.split_at(BALANCE_BIT_WIDTH / 8);
+
+                // Creator account ID, creator address, serial id, content hash
+                if pub_data_left.len()
+                    != ACCOUNT_ID_BIT_WIDTH / 8
+                        + ETH_ADDRESS_BIT_WIDTH / 8
+                        + SERIAL_ID_WIDTH / 8
+                        + CONTENT_HASH_WIDTH / 8
+                {
+                    return Err(LogParseError::PubdataLengthMismatch);
+                }
+                Ok(Self::FullChangeGroup(FullChangeGroup {
+                    account_id: AccountId(account_id),
+                    eth_address,
+                    token: TokenId(token),
+                    is_legacy: false,
+                    group1,
+                    group2,
                 }))
             }
             _ => Err(LogParseError::UnsupportedPriorityOpType),
@@ -352,6 +577,7 @@ impl ZkSyncPriorityOp {
         match self {
             Self::Deposit(_) => DepositOp::CHUNKS,
             Self::FullExit(_) => FullExitOp::CHUNKS,
+            Self::FullChangeGroup(_) => FullChangeGroupOp::CHUNKS,
         }
     }
 
@@ -381,6 +607,7 @@ impl ZkSyncPriorityOp {
         match self {
             ZkSyncPriorityOp::Deposit(_) => "Deposit".to_string(),
             ZkSyncPriorityOp::FullExit(_) => "FullExit".to_string(),
+            ZkSyncPriorityOp::FullChangeGroup(_) => "FullChangeGroup".to_string(),
         }
     }
 }

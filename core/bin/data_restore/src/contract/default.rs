@@ -99,13 +99,13 @@ where
 #[cfg(test)]
 mod test {
     use num::BigUint;
-
     use zksync_types::operations::ChangePubKeyOp;
     use zksync_types::tx::{ChangePubKey, TxSignature};
     use zksync_types::{
         AccountId, Close, CloseOp, Deposit, DepositOp, FullExit, FullExitOp, Nonce, PubKeyHash,
         TokenId, Transfer, TransferOp, TransferToNewOp, Withdraw, WithdrawOp, ZkSyncOp,
     };
+    use zksync_utils::parse_env;
 
     use crate::contract::v6;
 
@@ -132,6 +132,7 @@ mod test {
 
     #[test]
     fn test_part_exit() {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         let tx = Withdraw::new(
             AccountId(3),
             "7777777777777777777777777777777777777777".parse().unwrap(),
@@ -139,6 +140,7 @@ mod test {
             TokenId(1),
             20u32.into(),
             10u32.into(),
+            group,
             Nonce(2),
             Default::default(),
             None,
@@ -208,6 +210,7 @@ mod test {
 
     #[test]
     fn test_transfer_to_new() {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         let tx = Transfer::new(
             AccountId(11),
             "7777777777777777777777777777777777777777".parse().unwrap(),
@@ -215,6 +218,7 @@ mod test {
             TokenId(1),
             20u32.into(),
             20u32.into(),
+            server_group_id,
             Nonce(3),
             Default::default(),
             None,
@@ -235,6 +239,7 @@ mod test {
 
     #[test]
     fn test_transfer() {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         let tx = Transfer::new(
             AccountId(11),
             "7777777777777777777777777777777777777777".parse().unwrap(),
@@ -242,6 +247,7 @@ mod test {
             TokenId(1),
             20u32.into(),
             10u32.into(),
+            server_group_id,
             Nonce(3),
             Default::default(),
             None,
@@ -283,12 +289,14 @@ mod test {
 
     #[test]
     fn test_change_pubkey_offchain() {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         let tx = ChangePubKey::new(
             AccountId(11),
             "7777777777777777777777777777777777777777".parse().unwrap(),
             PubKeyHash::from_hex("sync:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f").unwrap(),
             TokenId(0),
             Default::default(),
+            server_group_id,
             Nonce(3),
             Default::default(),
             None,

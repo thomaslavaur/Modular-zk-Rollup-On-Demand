@@ -396,6 +396,27 @@ impl LogsHelper {
                     op.withdraw_amount.unwrap_or_default().0,
                 ));
             }
+            ZkSyncOp::ChangeGroup(op) => {
+                let token = self.get_token_by_id(storage, op.tx.token).await?;
+                result.push((token.clone(), op.tx.from, H160::zero(), op.tx.amount));
+                result.push((token, op.tx.from, H160::zero(), op.tx.fee));
+            }
+            ZkSyncOp::FullChangeGroup(op) => {
+                let token = self.get_token_by_id(storage, op.priority_op.token).await?;
+                let from = storage
+                    .chain()
+                    .account_schema()
+                    .account_address_by_id(op.priority_op.account_id)
+                    .await
+                    .map_err(|_| Error::internal_error())?
+                    .ok_or_else(Error::internal_error)?;
+                result.push((
+                    token,
+                    from,
+                    H160::zero(),
+                    op.withdraw_amount.unwrap_or_default().0,
+                ));
+            }
             _ => {}
         }
         Ok(result)
@@ -624,6 +645,25 @@ impl LogsHelper {
     }
 
     fn zksync_full_exit_data(account_address: H160, token: H160, amount: U256) -> Bytes {
+        let bytes = encode(&[
+            AbiToken::Address(account_address),
+            AbiToken::Address(token),
+            AbiToken::Uint(amount),
+        ]);
+        bytes.into()
+    }
+
+    fn zksync_change_group_data(
+        from: H160,
+        to: H160,
+        token: H160,
+        amount: U256,
+        fee: U256,
+    ) -> Bytes {
+        Self::zksync_transfer_data(from, to, token, amount, fee)
+    }
+
+    fn zksync_full_change_group_data(account_address: H160, token: H160, amount: U256) -> Bytes {
         let bytes = encode(&[
             AbiToken::Address(account_address),
             AbiToken::Address(token),

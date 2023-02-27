@@ -15,6 +15,8 @@ pub enum ChangePubkeyOpError {
     CannotGetFeeTokenId,
     #[error("Failed to get fee")]
     CannotGetFee,
+    #[error("Failed to get group id")]
+    CannotGetGroup,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -35,6 +37,8 @@ pub enum DepositOpError {
     CannotGetTokenId,
     #[error("Failed to get amount")]
     CannotGetAmount,
+    #[error("Failed to get group")]
+    CannotGetGroup,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -51,6 +55,8 @@ pub enum ForcedExitOpError {
     CannotGetAmount,
     #[error("Failed to get fee")]
     CannotGetFee,
+    #[error("Failed to get group id")]
+    CannotGetGroupId,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -63,6 +69,8 @@ pub enum FullExitOpError {
     CannotGetTokenId,
     #[error("Failed to get amount")]
     CannotGetAmount,
+    #[error("Failed to get group")]
+    CannotGetGroup,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -85,6 +93,8 @@ pub enum TransferOpError {
     CannotGetAmount,
     #[error("Failed to get fee")]
     CannotGetFee,
+    #[error("Failed to get group")]
+    CannotGetGroup,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -99,6 +109,8 @@ pub enum WithdrawOpError {
     CannotGetAmount,
     #[error("Failed to get fee")]
     CannotGetFee,
+    #[error("Failed to get group id")]
+    CannotGetGroupId,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -169,6 +181,10 @@ pub enum PublicDataDecodeError {
     MintNFTOpError(#[from] MintNFTOpError),
     #[error(transparent)]
     WithdrawNFTOpError(#[from] WithdrawNFTOpError),
+    #[error(transparent)]
+    ChangeGroupOpError(#[from] ChangeGroupOpError),
+    #[error(transparent)]
+    FullChangeGroupError(#[from] FullChangeGroupOpError),
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -187,4 +203,34 @@ pub enum SwapOpError {
     CannotGetAmount,
     #[error("Failed to get Fee")]
     CannotGetFee,
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum ChangeGroupOpError {
+    #[error("Wrong bytes length for withdraw pubdata")]
+    PubdataSizeMismatch,
+    #[error("Failed to get account id")]
+    CannotGetAccountId,
+    #[error("Failed to get token id")]
+    CannotGetTokenId,
+    #[error("Failed to get amount")]
+    CannotGetAmount,
+    #[error("Failed to get fee")]
+    CannotGetFee,
+    #[error("Failed to get group")]
+    CannotGetGroupId,
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum FullChangeGroupOpError {
+    #[error("Wrong bytes length for full exit pubdata")]
+    PubdataSizeMismatch,
+    #[error("Failed to get account id")]
+    CannotGetAccountId,
+    #[error("Failed to get token id")]
+    CannotGetTokenId,
+    #[error("Failed to get amount")]
+    CannotGetAmount,
+    #[error("Failed to get group")]
+    CannotGetGroup,
 }

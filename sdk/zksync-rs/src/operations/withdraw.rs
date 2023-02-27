@@ -20,6 +20,7 @@ pub struct WithdrawBuilder<'a, S: EthereumSigner, P: Provider> {
     amount: Option<BigUint>,
     fee: Option<BigUint>,
     to: Option<Address>,
+    group: Option<u16>,
     nonce: Option<Nonce>,
     valid_from: Option<u64>,
     valid_until: Option<u64>,
@@ -38,6 +39,7 @@ where
             amount: None,
             fee: None,
             to: None,
+            group: None,
             nonce: None,
             valid_from: None,
             valid_until: None,
@@ -55,6 +57,9 @@ where
         let to = self
             .to
             .ok_or_else(|| ClientError::MissingRequiredField("to".into()))?;
+        let group = self
+            .group
+            .ok_or_else(|| ClientError::MissingRequiredField("group".into()))?;
 
         let nonce = match self.nonce {
             Some(nonce) => nonce,
@@ -90,6 +95,7 @@ where
                 amount,
                 fee,
                 to,
+                group,
                 nonce,
                 TimeRange::new(valid_from, valid_until),
             )
@@ -190,6 +196,12 @@ where
 
         self.to = Some(to);
         Ok(self)
+    }
+
+    /// Sets the group of the withdraw.
+    pub fn group(mut self, group: u16) -> Self {
+        self.group = Some(group);
+        self
     }
 
     /// Sets the transaction nonce.

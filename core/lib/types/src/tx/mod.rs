@@ -1,5 +1,6 @@
 //! zkSync network L2 transactions.
 
+mod change_group;
 mod change_pubkey;
 mod close;
 mod forced_exit;
@@ -20,6 +21,7 @@ mod tests;
 #[doc(hidden)]
 pub use self::close::Close;
 pub use self::{
+    change_group::ChangeGroup,
     change_pubkey::{
         ChangePubKey, ChangePubKeyCREATE2Data, ChangePubKeyECDSAData, ChangePubKeyEthAuthData,
         ChangePubKeyType,

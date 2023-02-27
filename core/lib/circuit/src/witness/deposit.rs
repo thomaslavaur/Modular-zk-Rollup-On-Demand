@@ -7,6 +7,7 @@ use zksync_crypto::franklin_crypto::{
     rescue::RescueEngine,
 };
 // Workspace deps
+use zksync_crypto::params::GROUP_LEN;
 use zksync_crypto::{
     circuit::{
         account::CircuitAccountTree,
@@ -34,6 +35,7 @@ pub struct DepositData {
     pub amount: u128,
     pub token: u32,
     pub account_address: u32,
+    pub group: u16,
     pub address: Fr,
 }
 
@@ -55,6 +57,7 @@ impl Witness for DepositWitness<Bn256> {
             amount: deposit.priority_op.amount.to_string().parse().unwrap(),
             token: *deposit.priority_op.token as u32,
             account_address: *deposit.account_id,
+            group: deposit.priority_op.group as u16,
             address: eth_address_to_fr(&deposit.priority_op.to),
         };
         Self::apply_data(tree, &deposit_data)
@@ -85,6 +88,9 @@ impl Witness for DepositWitness<Bn256> {
             &self.args.eth_address.unwrap(),
             ETH_ADDRESS_BIT_WIDTH,
         );
+
+        append_be_fixed_width(&mut pubdata_bits, &self.args.group.unwrap(), GROUP_LEN * 8);
+
         resize_grow_only(
             &mut pubdata_bits,
             DepositOp::CHUNKS * CHUNK_BIT_WIDTH,
@@ -168,6 +174,7 @@ impl DepositWitness<Bn256> {
         //calculate a and b
         let a = amount_as_field_element;
         let b = Fr::zero();
+        let group = fr_from(deposit.group);
 
         //applying deposit
         let (account_witness_before, account_witness_after, balance_before, balance_after) =
@@ -213,6 +220,7 @@ impl DepositWitness<Bn256> {
                 full_amount: Some(amount_as_field_element),
                 a: Some(a),
                 b: Some(b),
+                group: Some(group),
                 ..Default::default()
             },
             before_root: Some(before_root),

@@ -24,7 +24,9 @@ library Operations {
         ForcedExit,
         MintNFT,
         WithdrawNFT,
-        Swap
+        Swap,
+        ChangeGroup,
+        FullChangeGroup
     }
 
     // Byte lengths
@@ -35,6 +37,7 @@ library Operations {
     uint8 internal constant NONCE_BYTES = 4;
     uint8 internal constant PUBKEY_HASH_BYTES = 20;
     uint8 internal constant ADDRESS_BYTES = 20;
+    uint8 internal constant GROUP_BYTES = 2;
     uint8 internal constant CONTENT_HASH_BYTES = 32;
     /// @dev Packed fee bytes lengths
     uint8 internal constant FEE_BYTES = 2;
@@ -49,14 +52,15 @@ library Operations {
     // Deposit pubdata
     struct Deposit {
         // uint8 opType
-        uint32 accountId;
-        uint32 tokenId;
-        uint128 amount;
-        address owner;
+        uint32 accountId; // 4B
+        uint32 tokenId; // 4B
+        uint128 amount; // 16B
+        address owner; // 20B
+        uint16 group; // 2B
     }
 
     uint256 internal constant PACKED_DEPOSIT_PUBDATA_BYTES =
-        OP_TYPE_BYTES + ACCOUNT_ID_BYTES + TOKEN_BYTES + AMOUNT_BYTES + ADDRESS_BYTES;
+        OP_TYPE_BYTES + ACCOUNT_ID_BYTES + TOKEN_BYTES + AMOUNT_BYTES + ADDRESS_BYTES + GROUP_BYTES;
 
     /// Deserialize deposit pubdata
     function readDepositPubdata(bytes memory _data) internal pure returns (Deposit memory parsed) {
@@ -66,7 +70,7 @@ library Operations {
         (offset, parsed.tokenId) = Bytes.readUInt32(_data, offset); // tokenId
         (offset, parsed.amount) = Bytes.readUInt128(_data, offset); // amount
         (offset, parsed.owner) = Bytes.readAddress(_data, offset); // owner
-
+        (offset, parsed.group) = Bytes.readUInt16(_data, offset); // group
         require(offset == PACKED_DEPOSIT_PUBDATA_BYTES, "N"); // reading invalid deposit pubdata size
     }
 
@@ -77,7 +81,8 @@ library Operations {
             bytes4(0), // accountId (ignored) (update when ACCOUNT_ID_BYTES is changed)
             op.tokenId, // tokenId
             op.amount, // amount
-            op.owner // owner
+            op.owner, // owner
+            op.group // group
         );
     }
 
@@ -93,6 +98,7 @@ library Operations {
         uint32 accountId;
         address owner;
         uint32 tokenId;
+        uint16 group;
         uint128 amount;
         uint32 nftCreatorAccountId;
         address nftCreatorAddress;
@@ -109,7 +115,8 @@ library Operations {
             ACCOUNT_ID_BYTES +
             ADDRESS_BYTES +
             NFT_SERIAL_ID_BYTES +
-            CONTENT_HASH_BYTES;
+            CONTENT_HASH_BYTES +
+            GROUP_BYTES;
 
     function readFullExitPubdata(bytes memory _data) internal pure returns (FullExit memory parsed) {
         // NOTE: there is no check that variable sizes are same as constants (i.e. TOKEN_BYTES), fix if possible.
@@ -117,12 +124,12 @@ library Operations {
         (offset, parsed.accountId) = Bytes.readUInt32(_data, offset); // accountId
         (offset, parsed.owner) = Bytes.readAddress(_data, offset); // owner
         (offset, parsed.tokenId) = Bytes.readUInt32(_data, offset); // tokenId
+        (offset, parsed.group) = Bytes.readUInt16(_data, offset); // group
         (offset, parsed.amount) = Bytes.readUInt128(_data, offset); // amount
         (offset, parsed.nftCreatorAccountId) = Bytes.readUInt32(_data, offset); // nftCreatorAccountId
         (offset, parsed.nftCreatorAddress) = Bytes.readAddress(_data, offset); // nftCreatorAddress
         (offset, parsed.nftSerialId) = Bytes.readUInt32(_data, offset); // nftSerialId
         (offset, parsed.nftContentHash) = Bytes.readBytes32(_data, offset); // nftContentHash
-
         require(offset == PACKED_FULL_EXIT_PUBDATA_BYTES, "O"); // reading invalid full exit pubdata size
     }
 
@@ -132,6 +139,7 @@ library Operations {
             op.accountId, // accountId
             op.owner, // owner
             op.tokenId, // tokenId
+            op.group, // group
             uint128(0), // amount -- ignored
             uint32(0), // nftCreatorAccountId -- ignored
             address(0), // nftCreatorAddress -- ignored
@@ -190,7 +198,6 @@ library Operations {
     enum ChangePubkeyType {
         ECRECOVER,
         CREATE2,
-        OldECRECOVER,
         ECRECOVERV2
     }
 
@@ -199,6 +206,7 @@ library Operations {
         uint32 accountId;
         bytes20 pubKeyHash;
         address owner;
+        uint16 group;
         uint32 nonce;
         //uint32 tokenId; -- present in pubdata, ignored at serialization
         //uint16 fee; -- present in pubdata, ignored at serialization
@@ -233,5 +241,98 @@ library Operations {
         (offset, parsed.contentHash) = Bytes.readBytes32(_data, offset);
         (offset, parsed.receiver) = Bytes.readAddress(_data, offset);
         (offset, parsed.tokenId) = Bytes.readUInt32(_data, offset);
+    }
+
+    // ChangeGroup pubdata
+
+    struct ChangeGroup {
+        //uint8 opType; -- present in pubdata, ignored at serialization
+        //uint32 accountId; -- present in pubdata, ignored at serialization
+        uint32 tokenId;
+        uint128 amount;
+        //uint16 fee; -- present in pubdata, ignored at serialization
+        address owner;
+        uint16 group_destination;
+    }
+
+    function readChangeGroupPubdata(bytes memory _data) internal pure returns (ChangeGroup memory parsed) {
+        // NOTE: there is no check that variable sizes are same as constants (i.e. TOKEN_BYTES), fix if possible.
+        uint256 offset = OP_TYPE_BYTES + ACCOUNT_ID_BYTES; // opType + accountId (ignored)
+        (offset, parsed.tokenId) = Bytes.readUInt32(_data, offset); // tokenId
+        (offset, parsed.amount) = Bytes.readUInt128(_data, offset); // amount
+        offset += FEE_BYTES; // fee (ignored)
+        (offset, parsed.owner) = Bytes.readAddress(_data, offset); // owner
+        (offset, parsed.group_destination) = Bytes.readUInt16(_data, offset); // group
+    }
+
+    struct FullChangeGroup {
+        // uint8 opType
+        uint32 accountId;
+        address owner;
+        uint32 tokenId;
+        uint16 group1;
+        uint16 group2;
+        uint128 amount;
+        uint32 nftCreatorAccountId;
+        address nftCreatorAddress;
+        uint32 nftSerialId;
+        bytes32 nftContentHash;
+    }
+
+    uint256 public constant PACKED_FULL_CHANGE_GROUP_PUBDATA_BYTES =
+        OP_TYPE_BYTES +
+            ACCOUNT_ID_BYTES +
+            ADDRESS_BYTES +
+            TOKEN_BYTES +
+            AMOUNT_BYTES +
+            ACCOUNT_ID_BYTES +
+            ADDRESS_BYTES +
+            NFT_SERIAL_ID_BYTES +
+            CONTENT_HASH_BYTES +
+            GROUP_BYTES *
+            2;
+
+    function readFullChangeGroupPubdata(bytes memory _data) internal pure returns (FullChangeGroup memory parsed) {
+        // NOTE: there is no check that variable sizes are same as constants (i.e. TOKEN_BYTES), fix if possible.
+        uint256 offset = OP_TYPE_BYTES;
+        (offset, parsed.accountId) = Bytes.readUInt32(_data, offset); // accountId
+        (offset, parsed.owner) = Bytes.readAddress(_data, offset); // owner
+        (offset, parsed.tokenId) = Bytes.readUInt32(_data, offset); // tokenId
+        (offset, parsed.group1) = Bytes.readUInt16(_data, offset); // group1
+        (offset, parsed.group2) = Bytes.readUInt16(_data, offset); // group2
+        (offset, parsed.amount) = Bytes.readUInt128(_data, offset); // amount
+        (offset, parsed.nftCreatorAccountId) = Bytes.readUInt32(_data, offset); // nftCreatorAccountId
+        (offset, parsed.nftCreatorAddress) = Bytes.readAddress(_data, offset); // nftCreatorAddress
+        (offset, parsed.nftSerialId) = Bytes.readUInt32(_data, offset); // nftSerialId
+        (offset, parsed.nftContentHash) = Bytes.readBytes32(_data, offset); // nftContentHash
+        require(offset == PACKED_FULL_CHANGE_GROUP_PUBDATA_BYTES, "O"); // reading invalid full exit pubdata size
+    }
+
+    function writeFullChangeGroupPubdataForPriorityQueue(FullChangeGroup memory op)
+        internal
+        pure
+        returns (bytes memory buf)
+    {
+        buf = abi.encodePacked(
+            uint8(OpType.FullChangeGroup),
+            op.accountId, // accountId
+            op.owner, // owner
+            op.tokenId, // tokenId
+            op.group1, // group1
+            op.group2, //group2
+            uint128(0), // amount -- ignored
+            uint32(0), // nftCreatorAccountId -- ignored
+            address(0), // nftCreatorAddress -- ignored
+            uint32(0), // nftSerialId -- ignored
+            bytes32(0) // nftContentHash -- ignored
+        );
+    }
+
+    function checkFullChangeGroupInPriorityQueue(FullChangeGroup memory op, bytes20 hashedPubdata)
+        internal
+        pure
+        returns (bool)
+    {
+        return Utils.hashBytesToBytes20(writeFullChangeGroupPubdataForPriorityQueue(op)) == hashedPubdata;
     }
 }

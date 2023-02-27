@@ -593,4 +593,23 @@ impl<'a, 'c> AccountSchema<'a, 'c> {
         metrics::histogram!("sql.chain.account.get_nft_owner", start.elapsed());
         Ok(owner_id)
     }
+
+    pub async fn is_account_autorised(&mut self, address: Address) -> QueryResult<bool> {
+        let start = Instant::now();
+
+        let record = sqlx::query!(
+            r#"
+                SELECT autorised FROM account_creates
+                WHERE address = $1
+            "#,
+            address.as_bytes()
+        )
+        .fetch_optional(self.0.conn())
+        .await?;
+
+        let autorisation = record.map(|record| record.autorised as bool);
+
+        metrics::histogram!("sql.chain.account.get_autorisation", start.elapsed());
+        Ok(autorisation.unwrap_or(false))
+    }
 }

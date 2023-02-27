@@ -7,11 +7,13 @@ use serde::{Deserialize, Serialize};
 use zksync_basic_types::{AccountId, TokenId};
 use zksync_crypto::params::{CHUNK_BYTES, LEGACY_CHUNK_BYTES};
 
+mod change_group_op;
 mod change_pubkey_op;
 mod close_op;
 mod deposit_op;
 mod error;
 mod forced_exit;
+mod full_change_group_op;
 mod full_exit_op;
 mod mint_nft_op;
 mod noop_op;
@@ -24,10 +26,10 @@ mod withdraw_op;
 #[doc(hidden)]
 pub use self::close_op::CloseOp;
 pub use self::{
-    change_pubkey_op::ChangePubKeyOp, deposit_op::DepositOp, forced_exit::ForcedExitOp,
-    full_exit_op::FullExitOp, mint_nft_op::MintNFTOp, noop_op::NoopOp, swap_op::SwapOp,
-    transfer_op::TransferOp, transfer_to_new_op::TransferToNewOp, withdraw_nft_op::WithdrawNFTOp,
-    withdraw_op::WithdrawOp,
+    change_group_op::ChangeGroupOp, change_pubkey_op::ChangePubKeyOp, deposit_op::DepositOp,
+    forced_exit::ForcedExitOp, full_change_group_op::FullChangeGroupOp, full_exit_op::FullExitOp,
+    mint_nft_op::MintNFTOp, noop_op::NoopOp, swap_op::SwapOp, transfer_op::TransferOp,
+    transfer_to_new_op::TransferToNewOp, withdraw_nft_op::WithdrawNFTOp, withdraw_op::WithdrawOp,
 };
 use crate::operations::error::{PublicDataDecodeError, UnexpectedOperationType};
 
@@ -52,6 +54,8 @@ pub enum ZkSyncOp {
     /// `NoOp` operation cannot be directly created, but it's used to fill the block capacity.
     Noop(NoopOp),
     Swap(Box<SwapOp>),
+    ChangeGroup(Box<ChangeGroupOp>),
+    FullChangeGroup(Box<FullChangeGroupOp>),
 }
 
 impl ZkSyncOp {
@@ -70,6 +74,8 @@ impl ZkSyncOp {
             ZkSyncOp::Swap(_) => SwapOp::CHUNKS,
             ZkSyncOp::MintNFTOp(_) => MintNFTOp::CHUNKS,
             ZkSyncOp::WithdrawNFT(_) => WithdrawNFTOp::CHUNKS,
+            ZkSyncOp::ChangeGroup(_) => ChangeGroupOp::CHUNKS,
+            ZkSyncOp::FullChangeGroup(full_change_group_op) => full_change_group_op.chunks(),
         }
     }
     /// Get information about amounts in operation
@@ -94,6 +100,10 @@ impl ZkSyncOp {
                 .withdraw_amount()
                 .map(|amount| vec![(tx.priority_op.token, amount)]),
             ZkSyncOp::Noop(_) => None,
+            ZkSyncOp::ChangeGroup(tx) => Some(vec![(tx.tx.token, tx.tx.amount.clone())]),
+            ZkSyncOp::FullChangeGroup(tx) => tx
+                .withdraw_amount()
+                .map(|amount| vec![(tx.priority_op.token, amount)]),
         }
     }
 
@@ -112,6 +122,8 @@ impl ZkSyncOp {
             ZkSyncOp::Swap(op) => op.get_public_data(),
             ZkSyncOp::MintNFTOp(op) => op.get_public_data(),
             ZkSyncOp::WithdrawNFT(op) => op.get_public_data(),
+            ZkSyncOp::ChangeGroup(op) => op.get_public_data(),
+            ZkSyncOp::FullChangeGroup(op) => op.get_public_data(),
         }
     }
 
@@ -134,13 +146,17 @@ impl ZkSyncOp {
     ///
     /// - `Withdraw`;
     /// - `FullExit`;
+    /// - `ChangeGroup`;
     /// - `ForcedExit`.
+    ///  - `FullChangeGroup`;
     pub fn withdrawal_data(&self) -> Option<Vec<u8>> {
         match self {
             ZkSyncOp::Withdraw(op) => Some(op.get_withdrawal_data()),
             ZkSyncOp::WithdrawNFT(op) => Some(op.get_withdrawal_data()),
             ZkSyncOp::FullExit(op) => Some(op.get_withdrawal_data()),
             ZkSyncOp::ForcedExit(op) => Some(op.get_withdrawal_data()),
+            ZkSyncOp::ChangeGroup(op) => Some(op.get_withdrawal_data()),
+            ZkSyncOp::FullChangeGroup(op) => Some(op.get_withdrawal_data()),
             _ => None,
         }
     }
@@ -179,6 +195,12 @@ impl ZkSyncOp {
             WithdrawNFTOp::OP_CODE => Ok(ZkSyncOp::WithdrawNFT(Box::new(
                 WithdrawNFTOp::from_public_data(bytes)?,
             ))),
+            ChangeGroupOp::OP_CODE => Ok(ZkSyncOp::ChangeGroup(Box::new(
+                ChangeGroupOp::from_public_data(bytes)?,
+            ))),
+            FullChangeGroupOp::OP_CODE => Ok(ZkSyncOp::FullChangeGroup(Box::new(
+                FullChangeGroupOp::from_public_data(bytes)?,
+            ))),
             _ => Err(PublicDataDecodeError::UnknownOperationType),
         }
     }
@@ -215,6 +237,12 @@ impl ZkSyncOp {
             ForcedExitOp::OP_CODE => Ok(ZkSyncOp::ForcedExit(Box::new(
                 ForcedExitOp::from_legacy_public_data(bytes)?,
             ))),
+            ChangeGroupOp::OP_CODE => Ok(ZkSyncOp::ChangeGroup(Box::new(
+                ChangeGroupOp::from_legacy_public_data(bytes)?,
+            ))),
+            FullChangeGroupOp::OP_CODE => Ok(ZkSyncOp::FullChangeGroup(Box::new(
+                FullChangeGroupOp::from_legacy_public_data(bytes)?,
+            ))),
             _ => Err(PublicDataDecodeError::UnknownOperationType),
         }
     }
@@ -234,6 +262,8 @@ impl ZkSyncOp {
             SwapOp::OP_CODE => Ok(SwapOp::CHUNKS),
             MintNFTOp::OP_CODE => Ok(MintNFTOp::CHUNKS),
             WithdrawNFTOp::OP_CODE => Ok(WithdrawNFTOp::CHUNKS),
+            ChangeGroupOp::OP_CODE => Ok(ChangeGroupOp::CHUNKS),
+            FullChangeGroupOp::OP_CODE => Ok(FullChangeGroupOp::CHUNKS),
             _ => Err(UnexpectedOperationType()),
         }
         .map(|chunks| chunks * CHUNK_BYTES)
@@ -252,6 +282,8 @@ impl ZkSyncOp {
             FullExitOp::OP_CODE => Ok(FullExitOp::LEGACY_CHUNKS),
             ChangePubKeyOp::OP_CODE => Ok(ChangePubKeyOp::CHUNKS),
             ForcedExitOp::OP_CODE => Ok(ForcedExitOp::CHUNKS),
+            ChangeGroupOp::OP_CODE => Ok(ChangeGroupOp::CHUNKS),
+            FullChangeGroupOp::OP_CODE => Ok(FullChangeGroupOp::LEGACY_CHUNKS),
             _ => Err(UnexpectedOperationType()),
         }
         .map(|chunks| chunks * LEGACY_CHUNK_BYTES)
@@ -271,6 +303,7 @@ impl ZkSyncOp {
             ZkSyncOp::Swap(op) => Ok(ZkSyncTx::Swap(Box::new(op.tx.clone()))),
             ZkSyncOp::MintNFTOp(op) => Ok(ZkSyncTx::MintNFT(Box::new(op.tx.clone()))),
             ZkSyncOp::WithdrawNFT(op) => Ok(ZkSyncTx::WithdrawNFT(Box::new(op.tx.clone()))),
+            ZkSyncOp::ChangeGroup(op) => Ok(ZkSyncTx::ChangeGroup(Box::new(op.tx.clone()))),
             _ => Err(UnexpectedOperationType()),
         }
     }
@@ -280,6 +313,9 @@ impl ZkSyncOp {
         match self {
             ZkSyncOp::Deposit(op) => Ok(ZkSyncPriorityOp::Deposit(op.priority_op.clone())),
             ZkSyncOp::FullExit(op) => Ok(ZkSyncPriorityOp::FullExit(op.priority_op.clone())),
+            ZkSyncOp::FullChangeGroup(op) => {
+                Ok(ZkSyncPriorityOp::FullChangeGroup(op.priority_op.clone()))
+            }
             _ => Err(UnexpectedOperationType()),
         }
     }
@@ -299,6 +335,8 @@ impl ZkSyncOp {
             ZkSyncOp::Swap(op) => op.get_updated_account_ids(),
             ZkSyncOp::MintNFTOp(op) => op.get_updated_account_ids(),
             ZkSyncOp::WithdrawNFT(op) => op.get_updated_account_ids(),
+            ZkSyncOp::ChangeGroup(op) => op.get_updated_account_ids(),
+            ZkSyncOp::FullChangeGroup(op) => op.get_updated_account_ids(),
         }
     }
 
@@ -311,6 +349,8 @@ impl ZkSyncOp {
                 | &ZkSyncOp::FullExit(_)
                 | &ZkSyncOp::ChangePubKeyOffchain(_)
                 | &ZkSyncOp::ForcedExit(_)
+                | &ZkSyncOp::ChangeGroup(_)
+                | &ZkSyncOp::FullChangeGroup(_)
         )
     }
 
@@ -321,11 +361,16 @@ impl ZkSyncOp {
                 | &ZkSyncOp::FullExit(_)
                 | &ZkSyncOp::ForcedExit(_)
                 | &ZkSyncOp::WithdrawNFT(_)
+                | &ZkSyncOp::ChangeGroup(_)
+                | &ZkSyncOp::FullChangeGroup(_)
         )
     }
 
     pub fn is_priority_op(&self) -> bool {
-        matches!(self, &ZkSyncOp::Deposit(_) | &ZkSyncOp::FullExit(_))
+        matches!(
+            self,
+            &ZkSyncOp::Deposit(_) | &ZkSyncOp::FullExit(_) | &ZkSyncOp::FullChangeGroup(_)
+        )
     }
 }
 
@@ -398,5 +443,17 @@ impl From<SwapOp> for ZkSyncOp {
 impl From<WithdrawNFTOp> for ZkSyncOp {
     fn from(op: WithdrawNFTOp) -> Self {
         Self::WithdrawNFT(Box::new(op))
+    }
+}
+
+impl From<ChangeGroupOp> for ZkSyncOp {
+    fn from(op: ChangeGroupOp) -> Self {
+        Self::ChangeGroup(Box::new(op))
+    }
+}
+
+impl From<FullChangeGroupOp> for ZkSyncOp {
+    fn from(op: FullChangeGroupOp) -> Self {
+        Self::FullChangeGroup(Box::new(op))
     }
 }

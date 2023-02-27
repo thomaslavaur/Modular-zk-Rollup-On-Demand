@@ -136,6 +136,7 @@ CREATE TABLE account_creates (
     address bytea NOT NULL,
     nonce BIGINT NOT NULL,
     update_order_id INTEGER NOT NULL,
+    autorised bool NOT NULL DEFAULT FALSE,
     PRIMARY KEY (account_id, block_number)
 );
 

@@ -47,6 +47,7 @@ impl WithdrawNFTOp {
         data.extend_from_slice(&Self::WITHDRAW_DATA_PREFIX); // first byte is a bool variable 'addToPendingWithdrawalsQueue'
         data.extend_from_slice(self.tx.to.as_bytes());
         data.extend_from_slice(&self.tx.token.to_be_bytes());
+        data.extend_from_slice(&self.tx.group.to_be_bytes());
         data
     }
 
@@ -106,6 +107,7 @@ impl WithdrawNFTOp {
                 TokenId(token),
                 TokenId(token_fee),
                 fee,
+                Default::default(),
                 Nonce(nonce),
                 time_range,
                 None,

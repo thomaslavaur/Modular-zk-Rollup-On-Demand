@@ -5,7 +5,7 @@ use num::BigUint;
 use serde::{Deserialize, Serialize};
 use zksync_types::{
     tx::{
-        ChangePubKey, Close, EthBatchSignatures, ForcedExit, MintNFT, Swap, Transfer,
+        ChangeGroup, ChangePubKey, Close, EthBatchSignatures, ForcedExit, MintNFT, Swap, Transfer,
         TxEthSignature, TxHash, Withdraw, WithdrawNFT,
     },
     AccountId, Address, BlockNumber, EthBlockId, PubKeyHash, SerialId, TokenId, ZkSyncOp,
@@ -104,6 +104,7 @@ pub enum L2Transaction {
     MintNFT(Box<MintNFT>),
     Swap(Box<Swap>),
     WithdrawNFT(Box<WithdrawNFTData>),
+    ChangeGroup(Box<ChangeGroupData>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,11 +131,20 @@ pub struct WithdrawNFTData {
     pub eth_tx_hash: Option<H256>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeGroupData {
+    #[serde(flatten)]
+    pub tx: ChangeGroup,
+    pub eth_tx_hash: Option<H256>,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum L1Transaction {
     Deposit(ApiDeposit),
     FullExit(ApiFullExit),
+    FullChangeGroup(ApiFullChangeGroup),
 }
 
 impl L1Transaction {
@@ -151,6 +161,7 @@ impl L1Transaction {
                 amount: deposit.priority_op.amount,
                 to: deposit.priority_op.to,
                 account_id: Some(deposit.account_id),
+                group: deposit.priority_op.group,
                 eth_hash,
                 id,
                 tx_hash,
@@ -158,6 +169,16 @@ impl L1Transaction {
             ZkSyncOp::FullExit(deposit) => Some(Self::FullExit(ApiFullExit {
                 token_id: deposit.priority_op.token,
                 account_id: deposit.priority_op.account_id,
+                group: deposit.priority_op.group,
+                eth_hash,
+                id,
+                tx_hash,
+            })),
+            ZkSyncOp::FullChangeGroup(deposit) => Some(Self::FullChangeGroup(ApiFullChangeGroup {
+                token_id: deposit.priority_op.token,
+                account_id: deposit.priority_op.account_id,
+                group1: deposit.priority_op.group1,
+                group2: deposit.priority_op.group2,
                 eth_hash,
                 id,
                 tx_hash,
@@ -177,6 +198,7 @@ impl L1Transaction {
                 from: deposit.from,
                 token_id: deposit.token,
                 amount: deposit.amount,
+                group: deposit.group,
                 to: deposit.to,
                 account_id: None,
                 eth_hash,
@@ -186,10 +208,22 @@ impl L1Transaction {
             ZkSyncPriorityOp::FullExit(deposit) => Self::FullExit(ApiFullExit {
                 token_id: deposit.token,
                 account_id: deposit.account_id,
+                group: deposit.group,
                 eth_hash,
                 id,
                 tx_hash,
             }),
+            ZkSyncPriorityOp::FullChangeGroup(full_change_group) => {
+                Self::FullChangeGroup(ApiFullChangeGroup {
+                    token_id: full_change_group.token,
+                    account_id: full_change_group.account_id,
+                    group1: full_change_group.group1,
+                    group2: full_change_group.group2,
+                    eth_hash,
+                    id,
+                    tx_hash,
+                })
+            }
         }
     }
 }
@@ -207,6 +241,7 @@ pub struct ApiDeposit {
     pub id: SerialId,
     #[serde(serialize_with = "ZeroPrefixHexSerde::serialize")]
     pub tx_hash: TxHash,
+    pub group: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -214,6 +249,20 @@ pub struct ApiDeposit {
 pub struct ApiFullExit {
     pub account_id: AccountId,
     pub token_id: TokenId,
+    pub group: u16,
+    pub eth_hash: H256,
+    pub id: SerialId,
+    #[serde(serialize_with = "ZeroPrefixHexSerde::serialize")]
+    pub tx_hash: TxHash,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiFullChangeGroup {
+    pub account_id: AccountId,
+    pub token_id: TokenId,
+    pub group1: u16,
+    pub group2: u16,
     pub eth_hash: H256,
     pub id: SerialId,
     #[serde(serialize_with = "ZeroPrefixHexSerde::serialize")]

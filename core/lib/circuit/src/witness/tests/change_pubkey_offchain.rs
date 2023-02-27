@@ -31,6 +31,7 @@ fn test_change_pubkey_offchain_success() {
             true,
             FEE_TOKEN,
             Default::default(),
+            Default::default(),
             ChangePubKeyType::ECDSA,
             Default::default(),
         ),
@@ -55,61 +56,6 @@ fn test_change_pubkey_offchain_success() {
     );
 }
 
-/// Basic check for execution of `ChangePubKeyOp` in circuit with old signature scheme.
-/// Here we generate an empty account and change its public key.
-#[test]
-#[ignore]
-fn test_change_pubkey_offchain_old_signature_success() {
-    // Input data.
-    let accounts = vec![WitnessTestAccount::new_empty(AccountId(0xc1))];
-    let account = &accounts[0];
-
-    let mut tx = ChangePubKey::new(
-        AccountId(0xc1),
-        account.zksync_account.address,
-        PubKeyHash::from_privkey(&account.zksync_account.private_key),
-        FEE_TOKEN,
-        BigUint::from(0u32),
-        Nonce(0),
-        Default::default(),
-        None,
-        None,
-    );
-    tx.signature =
-        TxSignature::sign_musig(&account.zksync_account.private_key, &tx.get_old_bytes());
-    let change_pkhash_op = ChangePubKeyOp {
-        tx,
-        account_id: account.id,
-    };
-
-    let sign_packed = change_pkhash_op
-        .tx
-        .signature
-        .signature
-        .serialize_packed()
-        .expect("signature serialize");
-    let input = SigDataInput::new(
-        &sign_packed,
-        &change_pkhash_op.tx.get_old_bytes(),
-        &change_pkhash_op.tx.signature.pub_key,
-    )
-    .expect("input constructing fails");
-
-    generic_test_scenario::<ChangePubkeyOffChainWitness<Bn256>, _>(
-        &accounts,
-        change_pkhash_op,
-        input,
-        |plasma_state, op| {
-            let fee = <ZkSyncState as TxHandler<ChangePubKey>>::apply_op(plasma_state, op)
-                .expect("Operation failed")
-                .0
-                .unwrap();
-
-            vec![fee]
-        },
-    );
-}
-
 /// Same as `test_change_pubkey_offchain_success`, but uses a nonzero fee value.
 #[test]
 #[ignore]
@@ -118,12 +64,14 @@ fn test_change_pubkey_offchain_nonzero_fee() {
     let fee = 150u64.into();
     let accounts = vec![WitnessTestAccount::new(AccountId(0xc1), 500u64)];
     let account = &accounts[0];
+    let group = 1u16;
     let change_pkhash_op = ChangePubKeyOp {
         tx: account.zksync_account.sign_change_pubkey_tx(
             None,
             true,
             FEE_TOKEN,
             fee,
+            group,
             ChangePubKeyType::ECDSA,
             Default::default(),
         ),
@@ -168,6 +116,7 @@ fn test_incorrect_change_pubkey_account() {
             None,
             true,
             FEE_TOKEN,
+            Default::default(),
             Default::default(),
             ChangePubKeyType::ECDSA,
             Default::default(),
@@ -220,6 +169,7 @@ fn test_incorrect_change_pubkey_signature() {
         None,
         true,
         FEE_TOKEN,
+        Default::default(),
         Default::default(),
         ChangePubKeyType::ECDSA,
         Default::default(),

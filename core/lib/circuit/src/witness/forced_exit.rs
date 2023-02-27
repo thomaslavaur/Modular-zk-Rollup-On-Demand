@@ -8,6 +8,7 @@ use zksync_crypto::franklin_crypto::{
     rescue::RescueEngine,
 };
 // Workspace deps
+use zksync_crypto::params::GROUP_LEN;
 use zksync_crypto::{
     circuit::{
         account::CircuitAccountTree,
@@ -38,6 +39,7 @@ pub struct ForcedExitData {
     pub initiator_account_address: u32,
     pub target_account_address: u32,
     pub target_account_eth_address: Fr,
+    pub group: u16,
     pub valid_from: u64,
     pub valid_until: u64,
 }
@@ -79,6 +81,7 @@ impl Witness for ForcedExitWitness<Bn256> {
             initiator_account_address: *forced_exit.tx.initiator_account_id,
             target_account_address: *forced_exit.target_account_id,
             target_account_eth_address: eth_address_to_fr(&forced_exit.tx.target),
+            group: forced_exit.tx.group,
             valid_from,
             valid_until,
         };
@@ -119,6 +122,7 @@ impl Witness for ForcedExitWitness<Bn256> {
             &self.args.eth_address.unwrap(),
             ETH_ADDRESS_BIT_WIDTH,
         );
+        append_be_fixed_width(&mut pubdata_bits, &self.args.group.unwrap(), GROUP_LEN * 8);
         resize_grow_only(
             &mut pubdata_bits,
             ForcedExitOp::CHUNKS * CHUNK_BIT_WIDTH,
@@ -211,7 +215,7 @@ impl ForcedExitWitness<Bn256> {
         let account_address_target_fe = fr_from(forced_exit.target_account_address);
         let token_fe = fr_from(forced_exit.token);
         let amount_as_field_element = fr_from(forced_exit.amount);
-
+        let group = fr_from(forced_exit.group);
         let amount_bits = FloatConversions::to_float(
             forced_exit.amount,
             AMOUNT_EXPONENT_BIT_WIDTH,
@@ -357,6 +361,7 @@ impl ForcedExitWitness<Bn256> {
                 fee: Some(fee_encoded),
                 a: Some(a),
                 b: Some(b),
+                group: Some(group),
                 valid_from: Some(fr_from(forced_exit.valid_from)),
                 valid_until: Some(fr_from(forced_exit.valid_until)),
                 ..Default::default()

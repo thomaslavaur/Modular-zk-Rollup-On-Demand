@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Workspace
 use zksync_crypto::ff::PrimeField;
 use zksync_crypto::franklin_crypto::alt_babyjubjub::AltJubjubBn256;
+use zksync_crypto::franklin_crypto::plonk::circuit::verifier_circuit::helper_functions::evaluate_vanishing_poly_without_last_point;
 use zksync_crypto::franklin_crypto::rescue::bn256::Bn256RescueParams;
 use zksync_crypto::serialization::*;
 use zksync_crypto::{Engine, Fr};
@@ -21,13 +22,15 @@ pub struct ProverData {
     #[serde(with = "FrSerde")]
     pub block_number: Fr,
     #[serde(with = "FrSerde")]
-    pub public_data_commitment: Fr,
+    pub public_data_commitment_and_group: Fr,
     #[serde(with = "FrSerde")]
     pub old_root: Fr,
     #[serde(with = "FrSerde")]
     pub initial_used_subtree_root: Fr,
     #[serde(with = "FrSerde")]
     pub new_root: Fr,
+    #[serde(with = "FrSerde")]
+    pub group_id: Fr,
     #[serde(with = "FrSerde")]
     pub block_timestamp: Fr,
     #[serde(with = "FrSerde")]
@@ -49,10 +52,11 @@ pub struct ProverData {
 impl From<WitnessBuilder<'_>> for ProverData {
     fn from(witness_builder: WitnessBuilder) -> ProverData {
         ProverData {
-            public_data_commitment: witness_builder.pubdata_commitment.unwrap(),
+            public_data_commitment_and_group: witness_builder.pubdata_commitment_and_group.unwrap(),
             old_root: witness_builder.initial_root_hash,
             initial_used_subtree_root: witness_builder.initial_used_subtree_root_hash,
             new_root: witness_builder.root_after_fees.unwrap(),
+            group_id: Fr::from_str(&witness_builder.group_id.to_string()).expect("failed to parse"),
             block_timestamp: Fr::from_str(&witness_builder.timestamp.to_string())
                 .expect("failed to parse"),
             block_number: Fr::from_str(&witness_builder.block_number.to_string())
@@ -83,7 +87,8 @@ impl ProverData {
             block_number: Some(self.block_number),
             block_timestamp: Some(self.block_timestamp),
             validator_address: Some(self.validator_address),
-            pub_data_commitment: Some(self.public_data_commitment),
+            group_id: Some(self.group_id),
+            pub_data_commitment_and_group: Some(self.public_data_commitment_and_group),
             operations: self.operations,
             validator_balances: self.validator_balances,
             validator_audit_path: self.validator_audit_path,
@@ -180,6 +185,10 @@ pub struct OperationArgumentsDef {
     pub second_valid_from: Option<Fr>,
     #[serde(with = "OptionalFrSerde")]
     pub second_valid_until: Option<Fr>,
+    #[serde(with = "OptionalFrSerde")]
+    pub group: Option<Fr>,
+    #[serde(with = "OptionalFrSerde")]
+    pub group2: Option<Fr>,
 }
 
 #[derive(Serialize, Deserialize)]

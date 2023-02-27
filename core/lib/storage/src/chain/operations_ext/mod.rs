@@ -1987,7 +1987,7 @@ async fn complete_withdrawals_tx_hash(
 ) -> QueryResult<Option<H256>> {
     let result = if let Some(tx_type) = data.op.get("type") {
         let tx_type = tx_type.as_str().unwrap();
-        if tx_type == "Withdraw" || tx_type == "ForcedExit" {
+        if tx_type == "Withdraw" || tx_type == "ForcedExit" || tx_type == "ChangeGroup" {
             transaction
                 .chain()
                 .operations_schema()

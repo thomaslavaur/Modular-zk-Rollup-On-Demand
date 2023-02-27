@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 
 use num::{BigUint, Zero};
@@ -8,11 +7,9 @@ use thiserror::Error;
 use zksync_basic_types::Address;
 use zksync_crypto::{
     franklin_crypto::eddsa::PrivateKey,
-    params::{
-        max_account_id, max_processable_token, max_token_id, CURRENT_TX_VERSION, MIN_NFT_TOKEN_ID,
-    },
+    params::{max_account_id, max_processable_token, max_token_id, CURRENT_TX_VERSION},
 };
-use zksync_utils::{format_units, BigUintSerdeAsRadix10Str};
+use zksync_utils::{parse_env, BigUintSerdeAsRadix10Str};
 
 use super::{TxSignature, VerifiedSignatureCache};
 use crate::{
@@ -24,9 +21,9 @@ use crate::{
 };
 
 use crate::tx::error::{
-    AMOUNT_IS_NOT_PACKABLE, FEE_AMOUNT_IS_NOT_PACKABLE, WRONG_ACCOUNT_ID, WRONG_AMOUNT_ERROR,
-    WRONG_FEE_ERROR, WRONG_SIGNATURE, WRONG_TIME_RANGE, WRONG_TOKEN, WRONG_TOKEN_FOR_PAYING_FEE,
-    WRONG_TO_ADDRESS,
+    AMOUNT_IS_NOT_PACKABLE, DESTINATION_NOT_WHITELISTED, FEE_AMOUNT_IS_NOT_PACKABLE,
+    SENDER_NOT_WHITELISTED, WRONG_ACCOUNT_ID, WRONG_AMOUNT_ERROR, WRONG_FEE_ERROR, WRONG_GROUP,
+    WRONG_SIGNATURE, WRONG_TIME_RANGE, WRONG_TOKEN, WRONG_TOKEN_FOR_PAYING_FEE, WRONG_TO_ADDRESS,
 };
 use crate::tx::version::TxVersion;
 use crate::{account::PubKeyHash, utils::ethereum_sign_message_part, Engine};
@@ -49,6 +46,8 @@ pub struct Transfer {
     /// Fee for the transaction.
     #[serde(with = "BigUintSerdeAsRadix10Str")]
     pub fee: BigUint,
+    /// Group id where the transfer occur
+    pub group: u16,
     /// Current account nonce.
     pub nonce: Nonce,
     /// Time range when the transaction is valid
@@ -77,6 +76,7 @@ impl Transfer {
         token: TokenId,
         amount: BigUint,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         signature: Option<TxSignature>,
@@ -88,6 +88,7 @@ impl Transfer {
             token,
             amount,
             fee,
+            group,
             nonce,
             time_range: Some(time_range),
             signature: signature.clone().unwrap_or_default(),
@@ -109,61 +110,33 @@ impl Transfer {
         token: TokenId,
         amount: BigUint,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         private_key: &PrivateKey<Engine>,
     ) -> Result<Self, TransactionError> {
         let mut tx = Self::new(
-            account_id, from, to, token, amount, fee, nonce, time_range, None,
+            account_id, from, to, token, amount, fee, group, nonce, time_range, None,
         );
         tx.signature = TxSignature::sign_musig(private_key, &tx.get_bytes());
-        tx.check_correctness()?;
+        tx.check_correctness(true, true)?;
         Ok(tx)
     }
 
-    /// Encodes the transaction data as the byte sequence according to the zkSync protocol.
     pub fn get_bytes(&self) -> Vec<u8> {
-        self.get_bytes_with_version(CURRENT_TX_VERSION)
-    }
-
-    pub fn get_bytes_with_version(&self, version: u8) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&[255u8 - Self::TX_TYPE]);
-        out.extend_from_slice(&[version]);
+        out.extend_from_slice(&[CURRENT_TX_VERSION]);
         out.extend_from_slice(&self.account_id.to_be_bytes());
         out.extend_from_slice(self.from.as_bytes());
         out.extend_from_slice(self.to.as_bytes());
         out.extend_from_slice(&self.token.to_be_bytes());
         out.extend_from_slice(&pack_token_amount(&self.amount));
         out.extend_from_slice(&pack_fee_amount(&self.fee));
+        out.extend_from_slice(&self.group.to_be_bytes());
         out.extend_from_slice(&self.nonce.to_be_bytes());
         let time_range = self.time_range.unwrap_or_default();
         out.extend_from_slice(&time_range.as_be_bytes());
-        out
-    }
-
-    pub fn is_backwards_compatible(&self) -> bool {
-        self.token.0 < MIN_NFT_TOKEN_ID
-    }
-
-    /// Encodes the transaction data as the byte sequence according to the old zkSync protocol with 2 bytes token.
-    pub fn get_old_bytes(&self) -> Vec<u8> {
-        if !self.is_backwards_compatible() {
-            return vec![];
-        }
-
-        let mut out = Vec::new();
-        out.extend_from_slice(&[Self::TX_TYPE]);
-        out.extend_from_slice(&self.account_id.to_be_bytes());
-        out.extend_from_slice(self.from.as_bytes());
-        out.extend_from_slice(self.to.as_bytes());
-        out.extend_from_slice(&(u16::try_from(self.token.0).unwrap()).to_be_bytes());
-        out.extend_from_slice(&pack_token_amount(&self.amount));
-        out.extend_from_slice(&pack_fee_amount(&self.fee));
-        out.extend_from_slice(&self.nonce.to_be_bytes());
-        if let Some(time_range) = &self.time_range {
-            out.extend_from_slice(&time_range.as_be_bytes());
-        }
         out
     }
 
@@ -172,15 +145,6 @@ impl Transfer {
         if let VerifiedSignatureCache::Cached(cached_signer) = &self.cached_signer {
             *cached_signer
         } else {
-            if self.token.0 < MIN_NFT_TOKEN_ID {
-                if let Some(res) = self
-                    .signature
-                    .verify_musig(&self.get_old_bytes())
-                    .map(|pub_key| PubKeyHash::from_pubkey(&pub_key))
-                {
-                    return Some((res, TxVersion::Legacy));
-                }
-            }
             self.signature
                 .verify_musig(&self.get_bytes())
                 .map(|pub_key| (PubKeyHash::from_pubkey(&pub_key), TxVersion::V1))
@@ -198,6 +162,7 @@ impl Transfer {
             &self.amount,
             &self.fee,
             &self.to,
+            self.group,
         )
     }
 
@@ -209,24 +174,6 @@ impl Transfer {
         }
         message.push_str(format!("Nonce: {}", self.nonce).as_str());
         message
-    }
-
-    /// Returns an old-format message that should be signed by Ethereum account key.
-    /// Needed for backwards compatibility.
-    pub fn get_old_ethereum_sign_message(&self, token_symbol: &str, decimals: u8) -> String {
-        format!(
-            "Transfer {amount} {token}\n\
-            To: {to:?}\n\
-            Nonce: {nonce}\n\
-            Fee: {fee} {token}\n\
-            Account Id: {account_id}",
-            amount = format_units(&self.amount, decimals),
-            token = token_symbol,
-            to = self.to,
-            nonce = *self.nonce,
-            fee = format_units(&self.fee, decimals),
-            account_id = *self.account_id,
-        )
     }
 
     /// Helper method to remove cache and test transaction behavior without the signature cache.
@@ -241,9 +188,26 @@ impl Transfer {
     /// - `token` field must be within supported range.
     /// - `amount` field must represent a packable value.
     /// - `fee` field must represent a packable value.
+    /// - `group` field must be the one assigned to server
     /// - transfer recipient must not be `Adddress::zero()`.
     /// - zkSync signature must correspond to the PubKeyHash of the account.
-    pub fn check_correctness(&mut self) -> Result<(), TransactionError> {
+    pub fn check_correctness(
+        &mut self,
+        sender_autorisation: bool,
+        receiver_autorisation: bool,
+    ) -> Result<(), TransactionError> {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
+        let permissioned: bool = parse_env("SERVER_PERMISSIONED");
+        if permissioned {
+            if !sender_autorisation {
+                vlog::info!("sender of this transfer transaction is not whitelisted");
+                return Err(TransactionError::NotAllowedSender);
+            }
+            if !receiver_autorisation {
+                vlog::info!("receiver of this transfer transaction is not whitelisted");
+                return Err(TransactionError::NotAllowedDestination);
+            }
+        }
         if self.amount > BigUint::from(u128::MAX) {
             return Err(TransactionError::WrongAmount);
         }
@@ -259,7 +223,9 @@ impl Transfer {
         if self.account_id > max_account_id() {
             return Err(TransactionError::WrongAccountId);
         }
-
+        if self.group != server_group_id {
+            return Err(TransactionError::WrongGroup);
+        }
         if self.token > max_token_id() {
             return Err(TransactionError::WrongToken);
         }
@@ -300,6 +266,9 @@ pub enum TransactionError {
     WrongSignature,
     WrongToAddress,
     WrongTokenForPayingFee,
+    WrongGroup,
+    NotAllowedSender,
+    NotAllowedDestination,
 }
 
 impl Display for TransactionError {
@@ -315,6 +284,9 @@ impl Display for TransactionError {
             TransactionError::WrongSignature => WRONG_SIGNATURE,
             TransactionError::WrongTokenForPayingFee => WRONG_TOKEN_FOR_PAYING_FEE,
             TransactionError::WrongToAddress => WRONG_TO_ADDRESS,
+            TransactionError::WrongGroup => WRONG_GROUP,
+            TransactionError::NotAllowedSender => SENDER_NOT_WHITELISTED,
+            TransactionError::NotAllowedDestination => DESTINATION_NOT_WHITELISTED,
         };
         write!(f, "{}", error)
     }

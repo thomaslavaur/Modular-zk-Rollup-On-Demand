@@ -475,6 +475,8 @@ async fn create_logs() -> anyhow::Result<()> {
     let to_account = ZkSyncAccount::rand_with_seed([5, 6, 7, 8]);
     to_account.set_account_id(Some(to_account_id));
 
+    let group = 1;
+
     let mut storage = rpc_app.connection_pool.access_storage().await?;
 
     let token1 = storage
@@ -504,6 +506,7 @@ async fn create_logs() -> anyhow::Result<()> {
                 amount.clone(),
                 fee.clone(),
                 &to_account.address,
+                group,
                 None,
                 true,
                 Default::default(),
@@ -523,6 +526,7 @@ async fn create_logs() -> anyhow::Result<()> {
                 amount.clone(),
                 fee.clone(),
                 &to_account.address,
+                group,
                 None,
                 true,
                 Default::default(),
@@ -538,6 +542,7 @@ async fn create_logs() -> anyhow::Result<()> {
             token1.id,
             fee.clone(),
             &to_account.address,
+            group,
             None,
             true,
             Default::default(),
@@ -554,6 +559,7 @@ async fn create_logs() -> anyhow::Result<()> {
             true,
             token1.id,
             fee.clone(),
+            group,
             ChangePubKeyType::ECDSA,
             Default::default(),
         );
@@ -670,6 +676,7 @@ async fn create_logs() -> anyhow::Result<()> {
             token: token1.id,
             amount: amount.clone(),
             to: to_account.address,
+            group: group,
         },
         account_id: from_account_id,
     };
@@ -679,6 +686,7 @@ async fn create_logs() -> anyhow::Result<()> {
             eth_address: from_account.address,
             token: token1.id,
             is_legacy: false,
+            group: group,
         },
         withdraw_amount: Some(amount.clone().into()),
         creator_account_id: None,

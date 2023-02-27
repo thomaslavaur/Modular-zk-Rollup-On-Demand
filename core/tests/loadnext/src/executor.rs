@@ -143,6 +143,7 @@ impl Executor {
                 main_token,
                 U256::from(deposit_amount),
                 self.pool.master_wallet.address(),
+                1,
             )
             .await?;
 
@@ -247,6 +248,7 @@ impl Executor {
                 .amount(transfer_amount)
                 .token(token.as_str())?
                 .fee(0u64)
+                .group(1)
                 .nonce(nonce)
                 .tx()
                 .await?;
@@ -276,6 +278,7 @@ impl Executor {
             .amount(0u64)
             .token(token.as_str())?
             .fee(batch_fee)
+            .group(1)
             .nonce(nonce)
             .tx()
             .await?;

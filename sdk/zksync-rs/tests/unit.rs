@@ -433,6 +433,7 @@ mod signatures_with_vectors {
                         false,
                         token,
                         change_pubkey_tx.fee.clone(),
+                        group,
                         change_pubkey_tx.time_range,
                     )
                     .await

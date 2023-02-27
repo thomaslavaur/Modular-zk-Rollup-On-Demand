@@ -195,6 +195,7 @@ pub async fn register_signing_key(
         true,
         TokenId(0),
         BigUint::from(0u8),
+        1,
         ChangePubKeyType::ECDSA,
         TimeRange::default(),
     );

@@ -57,7 +57,7 @@ impl ProverImpl for DummyProver {
                     .expect("Failed to load correct single proof")
                     .0
                     .clone();
-                single_proof.0.input_values[0] = prover_data.public_data_commitment;
+                single_proof.0.input_values[0] = prover_data.public_data_commitment_and_group;
                 JobResultData::BlockProof(single_proof)
             }
         };

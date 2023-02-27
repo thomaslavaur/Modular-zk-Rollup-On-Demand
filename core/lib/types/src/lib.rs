@@ -62,16 +62,17 @@ pub use self::account::{Account, AccountUpdate, PubKeyHash};
 pub use self::block::{ExecutedOperations, ExecutedPriorityOp, ExecutedTx};
 pub use self::fee::{BatchFee, Fee, OutputFeeType, TotalFee};
 pub use self::operations::{
-    ChangePubKeyOp, DepositOp, ForcedExitOp, FullExitOp, MintNFTOp, SwapOp, TransferOp,
-    TransferToNewOp, WithdrawNFTOp, WithdrawOp, ZkSyncOp,
+    ChangeGroupOp, ChangePubKeyOp, DepositOp, ForcedExitOp, FullChangeGroupOp, FullExitOp,
+    MintNFTOp, SwapOp, TransferOp, TransferToNewOp, WithdrawNFTOp, WithdrawOp, ZkSyncOp,
 };
-pub use self::priority_ops::{Deposit, FullExit, PriorityOp, ZkSyncPriorityOp};
+pub use self::priority_ops::{Deposit, FullChangeGroup, FullExit, PriorityOp, ZkSyncPriorityOp};
 pub use self::register_factory::RegisterNFTFactoryEvent;
 pub use self::tokens::{
     NewTokenEvent, Token, TokenInfo, TokenKind, TokenLike, TokenPrice, TxFeeTypes, NFT,
 };
 pub use self::tx::{
-    ForcedExit, MintNFT, Order, SignedZkSyncTx, Swap, Transfer, Withdraw, WithdrawNFT, ZkSyncTx,
+    ChangeGroup, ForcedExit, MintNFT, Order, SignedZkSyncTx, Swap, Transfer, Withdraw, WithdrawNFT,
+    ZkSyncTx,
 };
 
 #[doc(hidden)]

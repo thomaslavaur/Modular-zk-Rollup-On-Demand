@@ -61,7 +61,6 @@ impl TransferToNewOp {
             amount_offset + (AMOUNT_EXPONENT_BIT_WIDTH + AMOUNT_MANTISSA_BIT_WIDTH) / 8;
         let to_id_offset = to_address_offset + FR_ADDRESS_LEN;
         let fee_offset = to_id_offset + ACCOUNT_ID_BIT_WIDTH / 8;
-
         let from_id = u32::from_bytes(&bytes[from_offset..from_offset + ACCOUNT_ID_BIT_WIDTH / 8])
             .ok_or(TransferOpError::CannotGetFromAccountId)?;
         let to_id = u32::from_bytes(&bytes[to_id_offset..to_id_offset + ACCOUNT_ID_BIT_WIDTH / 8])
@@ -90,6 +89,7 @@ impl TransferToNewOp {
                 TokenId(token),
                 amount,
                 fee,
+                Default::default(),
                 Nonce(nonce),
                 time_range,
                 None,

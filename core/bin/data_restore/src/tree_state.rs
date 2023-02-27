@@ -12,8 +12,8 @@ use zksync_types::{
     operations::ZkSyncOp,
     priority_ops::{PriorityOp, ZkSyncPriorityOp},
     tx::{ChangePubKey, Close, ForcedExit, Swap, Transfer, Withdraw, WithdrawNFT, ZkSyncTx},
-    AccountId, AccountMap, AccountTree, AccountUpdates, Address, BlockNumber, MintNFT, SerialId,
-    TokenId, H256, NFT,
+    AccountId, AccountMap, AccountTree, AccountUpdates, Address, BlockNumber, ChangeGroup, MintNFT,
+    SerialId, TokenId, H256, NFT,
 };
 
 /// Rollup accounts states
@@ -438,6 +438,46 @@ impl TreeState {
                         &mut accounts_updated,
                         current_op_block_index,
                         &mut ops,
+                    );
+                }
+                ZkSyncOp::ChangeGroup(mut op) => {
+                    // ChangeGroup op comes with empty Account Address and Nonce fields
+                    let account = self
+                        .state
+                        .get_account(op.account_id)
+                        .ok_or_else(|| format_err!("ChangeGroup fail: Nonexistent account"))?;
+                    op.tx.from = account.address;
+                    op.tx.nonce = account.nonce;
+
+                    let tx = ZkSyncTx::ChangeGroup(Box::new(op.tx.clone()));
+                    let (fee, updates) =
+                        <ZkSyncState as TxHandler<ChangeGroup>>::apply_op(&mut self.state, &op)
+                            .map_err(|e| format_err!("ChangeGroup fail: {}", e))?;
+                    let tx_result = OpSuccess {
+                        fee,
+                        updates,
+                        executed_op: ZkSyncOp::ChangeGroup(op),
+                    };
+                    current_op_block_index = self.update_from_tx(
+                        tx,
+                        tx_result,
+                        &mut fees,
+                        &mut accounts_updated,
+                        current_op_block_index,
+                        &mut ops,
+                    );
+                }
+                ZkSyncOp::FullChangeGroup(op) => {
+                    let priority_op = ZkSyncPriorityOp::FullChangeGroup(op.priority_op);
+                    let op_result = self.state.execute_priority_op(priority_op.clone());
+                    current_op_block_index = self.update_from_priority_operation(
+                        priority_op,
+                        op_result,
+                        &mut fees,
+                        &mut accounts_updated,
+                        current_op_block_index,
+                        &mut ops,
+                        *last_priority_op_serial_id,
                     );
                 }
                 ZkSyncOp::Noop(_) => {}

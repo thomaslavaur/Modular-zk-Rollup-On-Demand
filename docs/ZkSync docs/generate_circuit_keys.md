@@ -14,7 +14,7 @@ Clone the repository to your machine
 
 ## 2. Installing dependencies
 
-Key generation requires the same [dependencies](../docs/setup-dev.md) as our server.
+Key generation requires the same [dependencies](docs/ZkSync docs/setup-dev.mdup-dev.md) as our server.
 
 ## 4. Generating keys
 

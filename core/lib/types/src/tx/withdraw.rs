@@ -6,12 +6,9 @@ use thiserror::Error;
 use zksync_basic_types::Address;
 use zksync_crypto::{
     franklin_crypto::eddsa::PrivateKey,
-    params::{
-        max_account_id, max_fungible_token_id, max_processable_token, CURRENT_TX_VERSION,
-        MIN_NFT_TOKEN_ID,
-    },
+    params::{max_account_id, max_fungible_token_id, max_processable_token, CURRENT_TX_VERSION},
 };
-use zksync_utils::{format_units, BigUintSerdeAsRadix10Str};
+use zksync_utils::{parse_env, BigUintSerdeAsRadix10Str};
 
 use crate::{account::PubKeyHash, utils::ethereum_sign_message_part, Engine};
 use crate::{
@@ -22,7 +19,8 @@ use crate::{
 use super::{TimeRange, TxSignature, VerifiedSignatureCache};
 use crate::tx::error::{
     AMOUNT_IS_NOT_PACKABLE, FEE_AMOUNT_IS_NOT_PACKABLE, WRONG_ACCOUNT_ID, WRONG_AMOUNT_ERROR,
-    WRONG_FEE_ERROR, WRONG_SIGNATURE, WRONG_TIME_RANGE, WRONG_TOKEN, WRONG_TOKEN_FOR_PAYING_FEE,
+    WRONG_FEE_ERROR, WRONG_GROUP, WRONG_SIGNATURE, WRONG_TIME_RANGE, WRONG_TOKEN,
+    WRONG_TOKEN_FOR_PAYING_FEE,
 };
 use crate::tx::version::TxVersion;
 
@@ -44,6 +42,8 @@ pub struct Withdraw {
     /// Fee for the transaction.
     #[serde(with = "BigUintSerdeAsRadix10Str")]
     pub fee: BigUint,
+    /// Group ID
+    pub group: u16,
     /// Current account nonce.
     pub nonce: Nonce,
     /// Transaction zkSync signature.
@@ -78,6 +78,7 @@ impl Withdraw {
         token: TokenId,
         amount: BigUint,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         signature: Option<TxSignature>,
@@ -89,6 +90,7 @@ impl Withdraw {
             token,
             amount,
             fee,
+            group,
             nonce,
             signature: signature.clone().unwrap_or_default(),
             cached_signer: VerifiedSignatureCache::NotCached,
@@ -111,56 +113,30 @@ impl Withdraw {
         token: TokenId,
         amount: BigUint,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         private_key: &PrivateKey<Engine>,
     ) -> Result<Self, TransactionError> {
         let mut tx = Self::new(
-            account_id, from, to, token, amount, fee, nonce, time_range, None,
+            account_id, from, to, token, amount, fee, group, nonce, time_range, None,
         );
         tx.signature = TxSignature::sign_musig(private_key, &tx.get_bytes());
         tx.check_correctness()?;
         Ok(tx)
     }
 
-    pub fn is_backwards_compatible(&self) -> bool {
-        self.token.0 < MIN_NFT_TOKEN_ID
-    }
-
-    /// Encodes the transaction data as the byte sequence according to the old zkSync protocol with 2 bytes token.
-    pub fn get_old_bytes(&self) -> Vec<u8> {
-        if !self.is_backwards_compatible() {
-            return vec![];
-        }
-        let mut out = Vec::new();
-        out.extend_from_slice(&[Self::TX_TYPE]);
-        out.extend_from_slice(&self.account_id.to_be_bytes());
-        out.extend_from_slice(self.from.as_bytes());
-        out.extend_from_slice(self.to.as_bytes());
-        out.extend_from_slice(&(self.token.0 as u16).to_be_bytes());
-        out.extend_from_slice(&self.amount.to_u128().unwrap().to_be_bytes());
-        out.extend_from_slice(&pack_fee_amount(&self.fee));
-        out.extend_from_slice(&self.nonce.to_be_bytes());
-        let time_range = self.time_range.unwrap_or_default();
-        out.extend_from_slice(&time_range.as_be_bytes());
-        out
-    }
-
-    /// Encodes the transaction data as the byte sequence according to the zkSync protocol.
     pub fn get_bytes(&self) -> Vec<u8> {
-        self.get_bytes_with_version(CURRENT_TX_VERSION)
-    }
-
-    pub fn get_bytes_with_version(&self, version: u8) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&[255u8 - Self::TX_TYPE]);
-        out.extend_from_slice(&[version]);
+        out.extend_from_slice(&[CURRENT_TX_VERSION]);
         out.extend_from_slice(&self.account_id.to_be_bytes());
         out.extend_from_slice(self.from.as_bytes());
         out.extend_from_slice(self.to.as_bytes());
         out.extend_from_slice(&self.token.to_be_bytes());
         out.extend_from_slice(&self.amount.to_u128().unwrap().to_be_bytes());
         out.extend_from_slice(&pack_fee_amount(&self.fee));
+        out.extend_from_slice(&self.group.to_be_bytes());
         out.extend_from_slice(&self.nonce.to_be_bytes());
         if let Some(time_range) = &self.time_range {
             out.extend_from_slice(&time_range.as_be_bytes());
@@ -173,15 +149,6 @@ impl Withdraw {
         if let VerifiedSignatureCache::Cached(cached_signer) = &self.cached_signer {
             *cached_signer
         } else {
-            if self.token.0 < MIN_NFT_TOKEN_ID {
-                if let Some(res) = self
-                    .signature
-                    .verify_musig(&self.get_old_bytes())
-                    .map(|pub_key| PubKeyHash::from_pubkey(&pub_key))
-                {
-                    return Some((res, TxVersion::Legacy));
-                }
-            }
             self.signature
                 .verify_musig(&self.get_bytes())
                 .map(|pub_key| (PubKeyHash::from_pubkey(&pub_key), TxVersion::V1))
@@ -199,6 +166,7 @@ impl Withdraw {
             &self.amount,
             &self.fee,
             &self.to,
+            self.group,
         )
     }
 
@@ -212,24 +180,6 @@ impl Withdraw {
         message
     }
 
-    /// Returns an old-format message that should be signed by Ethereum account key.
-    /// Needed for backwards compatibility.
-    pub fn get_old_ethereum_sign_message(&self, token_symbol: &str, decimals: u8) -> String {
-        format!(
-            "Withdraw {amount} {token}\n\
-            To: {to:?}\n\
-            Nonce: {nonce}\n\
-            Fee: {fee} {token}\n\
-            Account Id: {account_id}",
-            amount = format_units(&self.amount, decimals),
-            token = token_symbol,
-            to = self.to,
-            nonce = *self.nonce,
-            fee = format_units(&self.fee, decimals),
-            account_id = *self.account_id,
-        )
-    }
-
     /// Helper method to remove cache and test transaction behavior without the signature cache.
     #[doc(hidden)]
     pub fn wipe_signer_cache(&mut self) {
@@ -241,11 +191,13 @@ impl Withdraw {
     /// - `account_id` field must be within supported range.
     /// - `token` field must be within supported range.
     /// - `fee` field must represent a packable value.
+    /// - `group` field must be the one assigned to server
     /// - zkSync signature must correspond to the PubKeyHash of the account.
     ///
     /// Note that we don't need to check whether token amount is packable, because pubdata for this operation
     /// contains unpacked value only.
     pub fn check_correctness(&mut self) -> Result<(), TransactionError> {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         if self.amount > BigUint::from(u128::MAX) {
             return Err(TransactionError::WrongAmount);
         }
@@ -261,6 +213,9 @@ impl Withdraw {
 
         if self.token > max_fungible_token_id() {
             return Err(TransactionError::WrongToken);
+        }
+        if self.group != server_group_id {
+            return Err(TransactionError::WrongGroup);
         }
         if !self
             .time_range
@@ -295,6 +250,7 @@ pub enum TransactionError {
     WrongTimeRange,
     WrongSignature,
     WrongTokenForPayingFee,
+    WrongGroup,
 }
 
 impl Display for TransactionError {
@@ -309,6 +265,7 @@ impl Display for TransactionError {
             TransactionError::WrongTimeRange => WRONG_TIME_RANGE,
             TransactionError::WrongSignature => WRONG_SIGNATURE,
             TransactionError::WrongTokenForPayingFee => WRONG_TOKEN_FOR_PAYING_FEE,
+            TransactionError::WrongGroup => WRONG_GROUP,
         };
         write!(f, "{}", error)
     }

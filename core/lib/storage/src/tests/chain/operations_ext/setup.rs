@@ -24,6 +24,7 @@ pub struct TransactionsHistoryTestSetup {
 
     pub tokens: Vec<Token>,
     pub blocks: Vec<Block>,
+    pub group: u16,
 
     pub next_tx_time: DateTime<Utc>,
 }
@@ -48,6 +49,7 @@ impl TransactionsHistoryTestSetup {
         to_zksync_account.set_account_id(Some(to_account_id));
 
         let amount = 1u32.into();
+        let group = 1u16;
 
         Self {
             from_zksync_account,
@@ -57,6 +59,7 @@ impl TransactionsHistoryTestSetup {
 
             tokens,
             blocks: Vec::new(),
+            group,
 
             next_tx_time: Utc::now(),
         }
@@ -195,6 +198,7 @@ impl TransactionsHistoryTestSetup {
                 token: self.tokens[0].id,
                 amount: self.amount.clone(),
                 to: self.to_zksync_account.address,
+                group: 0,
             },
             account_id: self.from_zksync_account.get_account_id().unwrap(),
         }));
@@ -230,6 +234,7 @@ impl TransactionsHistoryTestSetup {
                 eth_address: self.from_zksync_account.address,
                 token: self.tokens[2].id,
                 is_legacy: false,
+                group: 0,
             },
             withdraw_amount: Some(self.amount.clone().into()),
             creator_account_id: None,
@@ -267,6 +272,7 @@ impl TransactionsHistoryTestSetup {
                     self.amount.clone(),
                     0u32.into(),
                     &self.to_zksync_account.address,
+                    self.group,
                     None,
                     true,
                     Default::default(),
@@ -299,6 +305,7 @@ impl TransactionsHistoryTestSetup {
                     self.amount.clone(),
                     0u32.into(),
                     &self.to_zksync_account.address,
+                    self.group,
                     None,
                     true,
                     Default::default(),
@@ -331,6 +338,7 @@ impl TransactionsHistoryTestSetup {
                     self.amount.clone(),
                     0u32.into(),
                     &self.to_zksync_account.address,
+                    self.group,
                     None,
                     true,
                     Default::default(),
@@ -362,6 +370,7 @@ impl TransactionsHistoryTestSetup {
                     Default::default(),
                     0u32.into(),
                     &self.to_zksync_account.address,
+                    1,
                     None,
                     true,
                 )
@@ -427,6 +436,7 @@ impl TransactionsHistoryTestSetup {
             1u32.into(),
             1u32.into(),
             &self.from_zksync_account.address,
+            1,
             None,
             true,
             Default::default(),
@@ -438,6 +448,7 @@ impl TransactionsHistoryTestSetup {
             1u32.into(),
             1u32.into(),
             &self.to_zksync_account.address,
+            1,
             None,
             true,
             Default::default(),
@@ -448,6 +459,7 @@ impl TransactionsHistoryTestSetup {
                 .sign_swap(
                     (order1, order2),
                     (1u32.into(), 1u32.into()),
+                    1,
                     None,
                     true,
                     self.tokens[0].id,
@@ -499,6 +511,7 @@ impl TransactionsHistoryTestSetup {
                 false,
                 TokenId(0),
                 Default::default(),
+                1,
                 ChangePubKeyType::ECDSA,
                 Default::default(),
             ),
@@ -540,6 +553,7 @@ impl TransactionsHistoryTestSetup {
             1u32.into(),
             1u32.into(),
             &recipient1_account.address,
+            1,
             None,
             true,
             Default::default(),
@@ -551,6 +565,7 @@ impl TransactionsHistoryTestSetup {
             1u32.into(),
             1u32.into(),
             &recipient2_account.address,
+            1,
             None,
             true,
             Default::default(),
@@ -561,6 +576,7 @@ impl TransactionsHistoryTestSetup {
                 .sign_swap(
                     (order1, order2),
                     (1u32.into(), 1u32.into()),
+                    1,
                     None,
                     true,
                     self.tokens[0].id,

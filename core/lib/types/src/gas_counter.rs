@@ -36,10 +36,12 @@ impl CommitCost {
     pub const TRANSFER_TO_NEW_COST: u64 = 940;
     pub const FULL_EXIT_COST: u64 = 10_000;
     pub const WITHDRAW_COST: u64 = 3_900;
+    pub const CHANGE_GROUP_COST: u64 = 3_900;
     pub const WITHDRAW_NFT_COST: u64 = 5_150;
     pub const FORCED_EXIT_COST: u64 = Self::WITHDRAW_COST; // TODO: Verify value (ZKS-109).
     pub const MINT_TOKEN_COST: u64 = 920;
     pub const SWAP_COST: u64 = 710;
+    pub const FULL_CHANGE_GROUP_COST: u64 = 10_000;
 
     pub fn base_cost() -> U256 {
         U256::from(Self::BASE_COST)
@@ -77,6 +79,8 @@ impl CommitCost {
             ZkSyncOp::MintNFTOp(_) => Self::MINT_TOKEN_COST,
             ZkSyncOp::Close(_) => unreachable!("Close operations are disabled"),
             ZkSyncOp::WithdrawNFT(_) => Self::WITHDRAW_NFT_COST,
+            ZkSyncOp::ChangeGroup(_) => Self::CHANGE_GROUP_COST,
+            ZkSyncOp::FullChangeGroup(_) => Self::FULL_CHANGE_GROUP_COST,
         };
 
         U256::from(cost)
@@ -100,11 +104,13 @@ impl VerifyCost {
     pub const SWAP_COST: u64 = 0;
     pub const FULL_EXIT_COST: u64 = 30_000;
     pub const WITHDRAW_COST: u64 = 30_000;
+    pub const CHANGE_GROUP_COST: u64 = 30_000;
     pub const PENDING_WITHDRAW_COST: u64 = 60_000;
     pub const FORCED_EXIT_COST: u64 = Self::WITHDRAW_COST;
     pub const MINT_NFT_COST: u64 = 0;
     pub const WITHDRAW_NFT_COST: u64 = 80_000;
     pub const PENDING_WITHDRAW_NFT_COST: u64 = 240_000;
+    pub const FULL_CHANGE_GROUP: u64 = 30_000;
 
     pub fn base_cost() -> U256 {
         U256::from(Self::BASE_COST)
@@ -124,6 +130,8 @@ impl VerifyCost {
             ZkSyncOp::Swap(_) => Self::SWAP_COST,
             ZkSyncOp::Close(_) => unreachable!("Close operations are disabled"),
             ZkSyncOp::WithdrawNFT(_) => Self::WITHDRAW_NFT_COST,
+            ZkSyncOp::ChangeGroup(_) => Self::CHANGE_GROUP_COST,
+            ZkSyncOp::FullChangeGroup(_) => Self::FULL_CHANGE_GROUP,
         };
 
         U256::from(cost)

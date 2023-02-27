@@ -34,6 +34,7 @@ fn zksync_txs() -> Vec<SignedZkSyncTx> {
         TokenId(0),
         100u32.into(),
         10u32.into(),
+        1,
         Nonce(10),
         Default::default(),
         None,
@@ -46,6 +47,7 @@ fn zksync_txs() -> Vec<SignedZkSyncTx> {
         TokenId(0),
         500u32.into(),
         20u32.into(),
+        1,
         Nonce(11),
         Default::default(),
         None,
@@ -58,6 +60,7 @@ fn zksync_txs() -> Vec<SignedZkSyncTx> {
         TokenId(0),
         100u32.into(),
         10u32.into(),
+        1,
         Nonce(12),
         Default::default(),
         None,
@@ -69,6 +72,7 @@ fn zksync_txs() -> Vec<SignedZkSyncTx> {
         Default::default(),
         TokenId(0),
         Default::default(),
+        1,
         Nonce(13),
         Default::default(),
         None,
@@ -110,6 +114,7 @@ fn gen_transfers(n: usize) -> Vec<SignedZkSyncTx> {
                 TokenId(0),
                 100u32.into(),
                 10u32.into(),
+                1,
                 Nonce(10),
                 Default::default(),
                 None,
@@ -393,6 +398,7 @@ async fn test_return_executed_txs_to_mempool(mut storage: StorageProcessor<'_>) 
         eth_address: Address::zero(),
         token: TokenId(0),
         is_legacy: false,
+        group: 0,
     };
     let exec_priority_op = ExecutedPriorityOp {
         priority_op: PriorityOp {

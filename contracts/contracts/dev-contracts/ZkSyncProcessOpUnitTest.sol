@@ -13,22 +13,27 @@ contract ZkSyncProcessOpUnitTest is ZkSync {
         uint64 priorityOperationsProcessed,
         bytes memory offsetsCommitment
     ) external view {
-        (bytes32 resOpHash, uint64 resPriorOps, bytes memory resOffsetsCommitment) = collectOnchainOps(_newBlockData);
+        (bytes32 resOpHash, uint64 resPriorOps, bytes memory resOffsetsCommitment) = collectOnchainOps(
+            _newBlockData,
+            address_to_int[msg.sender]
+        );
         require(resOpHash == processableOperationsHash, "h");
         require(resPriorOps == priorityOperationsProcessed, "p");
         require(keccak256(resOffsetsCommitment) == keccak256(offsetsCommitment), "o");
     }
 
     function commitPriorityRequests() external {
-        totalCommittedPriorityRequests = totalOpenPriorityRequests;
+        uint_to_group[address_to_int[msg.sender]].totalCommittedPriorityRequests = uint_to_group[
+            address_to_int[msg.sender]
+        ].totalOpenPriorityRequests;
     }
 
     function getTotalOpenPriorityRequests() external view returns (uint64) {
-        return totalOpenPriorityRequests;
+        return uint_to_group[address_to_int[msg.sender]].totalOpenPriorityRequests;
     }
 
     function getTotalCommittedPriorityRequests() external view returns (uint64) {
-        return totalCommittedPriorityRequests;
+        return uint_to_group[address_to_int[msg.sender]].totalCommittedPriorityRequests;
     }
 
     function getAuthFact(address _address, uint32 nonce) external view returns (bytes32) {

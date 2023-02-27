@@ -10,11 +10,11 @@ use zksync_crypto::{
     params::{max_account_id, max_processable_token, CURRENT_TX_VERSION},
     PrivateKey,
 };
-use zksync_utils::{format_units, BigUintSerdeAsRadix10Str};
+use zksync_utils::{format_units, parse_env, BigUintSerdeAsRadix10Str};
 
 use super::{PackedEthSignature, TimeRange, TxSignature, VerifiedSignatureCache};
 use crate::tx::error::{
-    FEE_AMOUNT_IS_NOT_PACKABLE, INVALID_AUTH_DATA, WRONG_ACCOUNT_ID, WRONG_FEE_ERROR,
+    FEE_AMOUNT_IS_NOT_PACKABLE, INVALID_AUTH_DATA, WRONG_ACCOUNT_ID, WRONG_FEE_ERROR, WRONG_GROUP,
     WRONG_SIGNATURE, WRONG_TIME_RANGE, WRONG_TOKEN_FOR_PAYING_FEE,
 };
 use crate::{
@@ -138,6 +138,8 @@ pub struct ChangePubKey {
     /// Fee for the transaction.
     #[serde(with = "BigUintSerdeAsRadix10Str", default)]
     pub fee: BigUint,
+    /// Group Id for the transaction
+    pub group: u16,
     /// Current account nonce.
     pub nonce: Nonce,
     /// Transaction zkSync signature. Must be signed with the key corresponding to the
@@ -174,6 +176,7 @@ impl ChangePubKey {
         new_pk_hash: PubKeyHash,
         fee_token: TokenId,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         signature: Option<TxSignature>,
@@ -197,6 +200,7 @@ impl ChangePubKey {
             new_pk_hash,
             fee_token,
             fee,
+            group,
             nonce,
             signature: signature.clone().unwrap_or_default(),
             eth_signature: None,
@@ -219,6 +223,7 @@ impl ChangePubKey {
         new_pk_hash: PubKeyHash,
         fee_token: TokenId,
         fee: BigUint,
+        group: u16,
         nonce: Nonce,
         time_range: TimeRange,
         eth_signature: Option<PackedEthSignature>,
@@ -230,6 +235,7 @@ impl ChangePubKey {
             new_pk_hash,
             fee_token,
             fee,
+            group,
             nonce,
             time_range,
             None,
@@ -245,49 +251,22 @@ impl ChangePubKey {
         if let VerifiedSignatureCache::Cached(cached_signer) = &self.cached_signer {
             *cached_signer
         } else {
-            if let Some(res) = self
-                .signature
-                .verify_musig(&self.get_old_bytes())
-                .map(|pub_key| PubKeyHash::from_pubkey(&pub_key))
-            {
-                return Some((res, TxVersion::Legacy));
-            }
             self.signature
                 .verify_musig(&self.get_bytes())
                 .map(|pub_key| (PubKeyHash::from_pubkey(&pub_key), TxVersion::V1))
         }
     }
 
-    /// Encodes the transaction data as the byte sequence according to the old zkSync protocol with 2 bytes token.
-    pub fn get_old_bytes(&self) -> Vec<u8> {
-        let mut out = Vec::new();
-        out.extend_from_slice(&[Self::TX_TYPE]);
-        out.extend_from_slice(&self.account_id.to_be_bytes());
-        out.extend_from_slice(self.account.as_bytes());
-        out.extend_from_slice(&self.new_pk_hash.data);
-        out.extend_from_slice(&(self.fee_token.0 as u16).to_be_bytes());
-        out.extend_from_slice(&pack_fee_amount(&self.fee));
-        out.extend_from_slice(&self.nonce.to_be_bytes());
-        if let Some(time_range) = &self.time_range {
-            out.extend_from_slice(&time_range.as_be_bytes());
-        }
-        out
-    }
-
-    /// Encodes the transaction data as the byte sequence according to the zkSync protocol.
     pub fn get_bytes(&self) -> Vec<u8> {
-        self.get_bytes_with_version(CURRENT_TX_VERSION)
-    }
-
-    pub fn get_bytes_with_version(&self, version: u8) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&[255u8 - Self::TX_TYPE]);
-        out.extend_from_slice(&[version]);
+        out.extend_from_slice(&[CURRENT_TX_VERSION]);
         out.extend_from_slice(&self.account_id.to_be_bytes());
         out.extend_from_slice(self.account.as_bytes());
         out.extend_from_slice(&self.new_pk_hash.data);
         out.extend_from_slice(&self.fee_token.to_be_bytes());
         out.extend_from_slice(&pack_fee_amount(&self.fee));
+        out.extend_from_slice(&self.group.to_be_bytes());
         out.extend_from_slice(&self.nonce.to_be_bytes());
         let time_range = self.time_range.unwrap_or_default();
         out.extend_from_slice(&time_range.as_be_bytes());
@@ -304,11 +283,12 @@ impl ChangePubKey {
         // operation. Instead, fee data is signed via zkSync signature, which is essentially
         // free. This signature will be verified in the circuit.
 
-        const CHANGE_PUBKEY_SIGNATURE_LEN: usize = 60;
+        const CHANGE_PUBKEY_SIGNATURE_LEN: usize = 62;
         let mut eth_signed_msg = Vec::with_capacity(CHANGE_PUBKEY_SIGNATURE_LEN);
         eth_signed_msg.extend_from_slice(&self.new_pk_hash.data);
         eth_signed_msg.extend_from_slice(&self.nonce.to_be_bytes());
         eth_signed_msg.extend_from_slice(&self.account_id.to_be_bytes());
+        eth_signed_msg.extend_from_slice(&self.group.to_be_bytes());
         // In case this transaction is not part of a batch, we simply append zeros.
         if let Some(ChangePubKeyEthAuthData::ECDSA(ChangePubKeyECDSAData { batch_hash, .. })) =
             self.eth_auth_data
@@ -317,42 +297,6 @@ impl ChangePubKey {
         } else {
             eth_signed_msg.extend_from_slice(H256::default().as_bytes());
         }
-        if eth_signed_msg.len() != CHANGE_PUBKEY_SIGNATURE_LEN {
-            return Err(ChangePubkeySignedDataError::SignedMessageLengthMismatch {
-                actual: eth_signed_msg.len(),
-                expected: CHANGE_PUBKEY_SIGNATURE_LEN,
-            });
-        }
-        Ok(eth_signed_msg)
-    }
-
-    /// Provides an old message to be signed with the Ethereum private key.
-    pub fn get_old_eth_signed_data(&self) -> Result<Vec<u8>, ChangePubkeySignedDataError> {
-        // Fee data is not included into ETH signature input, since it would require
-        // to either have more chunks in pubdata (if fee amount is unpacked), unpack
-        // fee on contract (if fee amount is packed), or display non human-readable
-        // amount in message (if fee amount is packed and is not unpacked on contract).
-        // Either of these options is either non user-friendly or increase cost of
-        // operation. Instead, fee data is signed via zkSync signature, which is essentially
-        // free. This signature will be verified in the circuit.
-
-        const CHANGE_PUBKEY_SIGNATURE_LEN: usize = 152;
-        let mut eth_signed_msg = Vec::with_capacity(CHANGE_PUBKEY_SIGNATURE_LEN);
-        eth_signed_msg.extend_from_slice(b"Register zkSync pubkey:\n\n");
-        eth_signed_msg.extend_from_slice(
-            format!(
-                "{pubkey}\n\
-                 nonce: 0x{nonce}\n\
-                 account id: 0x{account_id}\
-                 \n\n",
-                pubkey = hex::encode(&self.new_pk_hash.data).to_ascii_lowercase(),
-                nonce = hex::encode(&self.nonce.to_be_bytes()).to_ascii_lowercase(),
-                account_id = hex::encode(&self.account_id.to_be_bytes()).to_ascii_lowercase()
-            )
-            .as_bytes(),
-        );
-        eth_signed_msg.extend_from_slice(b"Only sign this message for a trusted client!");
-
         if eth_signed_msg.len() != CHANGE_PUBKEY_SIGNATURE_LEN {
             return Err(ChangePubkeySignedDataError::SignedMessageLengthMismatch {
                 actual: eth_signed_msg.len(),
@@ -378,12 +322,6 @@ impl ChangePubKey {
                     create2_address == self.account
                 }
             }
-        } else if let Some(old_eth_signature) = &self.eth_signature {
-            let recovered_address = self
-                .get_old_eth_signed_data()
-                .ok()
-                .and_then(|msg| old_eth_signature.signature_recover_signer(&msg).ok());
-            recovered_address == Some(self.account)
         } else {
             true
         }
@@ -458,6 +396,7 @@ impl ChangePubKey {
     /// - `fee_token` field must be within supported range.
     /// - `fee` field must represent a packable value.
     pub fn check_correctness(&mut self) -> Result<(), TransactionError> {
+        let server_group_id: u16 = parse_env("SERVER_GROUP_ID");
         if !self.is_eth_auth_data_valid() {
             return Err(TransactionError::InvalidAuthData);
         }
@@ -466,6 +405,9 @@ impl ChangePubKey {
         }
         if self.account_id > max_account_id() {
             return Err(TransactionError::WrongAccountId);
+        }
+        if self.group != server_group_id {
+            return Err(TransactionError::WrongGroup);
         }
 
         if self.fee_token > max_processable_token() {
@@ -504,6 +446,7 @@ pub enum TransactionError {
     WrongFeeToken,
     WrongTimeRange,
     WrongSignature,
+    WrongGroup,
 }
 
 impl Display for TransactionError {
@@ -516,6 +459,7 @@ impl Display for TransactionError {
             TransactionError::WrongSignature => WRONG_SIGNATURE,
             TransactionError::WrongFeeToken => WRONG_TOKEN_FOR_PAYING_FEE,
             TransactionError::InvalidAuthData => INVALID_AUTH_DATA,
+            TransactionError::WrongGroup => WRONG_GROUP,
         };
         write!(f, "{}", error)
     }

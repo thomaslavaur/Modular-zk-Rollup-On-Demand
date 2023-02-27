@@ -77,7 +77,7 @@ export default {
         settings: {
             optimizer: {
                 enabled: true,
-                runs: 200
+                runs: 150
             },
             outputSelection: {
                 '*': {
@@ -102,14 +102,38 @@ export default {
     },
     networks: {
         env: {
-            url: process.env.ETH_CLIENT_WEB3_URL?.split(',')[0]
+            //url: process.env.ETH_CLIENT_WEB3_URL?.split(',')[0]
+            url: 'http://10.20.3.15:8545'
         },
         hardhat: {
             allowUnlimitedContractSize: true,
-            forking: {
+            /*forking: {
                 url: 'https://eth-mainnet.alchemyapi.io/v2/' + process.env.ALCHEMY_KEY,
                 enabled: process.env.TEST_CONTRACTS_FORK === '1'
-            }
+            },*/
+            chainId: 9,
+            accounts: [
+                {
+                    privateKey: '0x27593fea79697e947890ecbecce7901b0008345e5d7259710d0dd5e500d040be',
+                    balance: '100000000000000000000000000000000000000'
+                },
+                {
+                    privateKey: '0x03c807e375d9a70fb5f21984496e018baed148dad00829b58d7ca9e557f2998c',
+                    balance: '100000000000000000000000000000000000000'
+                },
+                {
+                    privateKey: '0x0559b9f000b4e4bbb7fe02e1374cef9623c2ab7c3791204b490e1f229191d104',
+                    balance: '100000000000000000000000000000000000000'
+                },
+                {
+                    privateKey: '0xe131bc3f481277a8f73d680d9ba404cc6f959e64296e0914dded403030d4f705',
+                    balance: '100000000000000000000000000000000000000'
+                },
+                {
+                    privateKey: '0x7726827caac94a7f9e1b160f7ea819f172f7b6f9d2a97f992c38edeab82d4110',
+                    balance: '100000000000000000000000000000000000000'
+                }
+            ]
         }
     },
     etherscan: {

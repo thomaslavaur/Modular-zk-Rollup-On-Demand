@@ -488,6 +488,7 @@ async fn test_remove_executed_priority_operations(
                 token: Default::default(),
                 amount: Default::default(),
                 to: Address::zero(),
+                group: 0,
             }))
             .unwrap(),
             from_account: Address::zero().as_bytes().to_vec(),

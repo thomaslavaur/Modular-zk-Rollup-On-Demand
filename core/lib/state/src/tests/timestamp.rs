@@ -25,6 +25,7 @@ fn invalid_timestamp_valid_from() {
         new_pub_key_hash,
         TokenId(0),
         0u32.into(),
+        group,
         account.nonce + 1,
         time_range,
         None,

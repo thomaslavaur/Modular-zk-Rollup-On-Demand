@@ -6,7 +6,7 @@ This document covers common scenarios of launching zkSync applications set local
 
 Prepare dev environment prerequisites: see
 
-[Installing dependencies](./setup-dev.md)
+[Installing dependencies](docs/ZkSync docs/setup-dev.mdcs/setup-dev.md)
 
 ## Setup local dev environment
 
@@ -33,8 +33,8 @@ To completely reset the dev environment:
 
 - Repeat the setup procedure above
 
-If `zk init` has already been executed, and now you only need to start docker containers (e.g. after reboot),
-simply launch:
+If `zk init` has already been executed, and now you only need to start docker containers (e.g. after reboot), simply
+launch:
 
 ```
 zk up
@@ -62,8 +62,8 @@ Switch between configurations:
 zk env <ENV_NAME>
 ```
 
-Default confiruration is `dev.env`, which is generated automatically
-from `dev.env.example` during `zk init` command execution.
+Default confiruration is `dev.env`, which is generated automatically from `dev.env.example` during `zk init` command
+execution.
 
 ## Build and run server + prover locally for development
 

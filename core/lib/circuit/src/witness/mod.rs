@@ -6,10 +6,12 @@ use crate::operation::Operation;
 
 // Public re-exports
 pub use self::{
+    change_group::ChangeGroupWitness,
     change_pubkey_offchain::ChangePubkeyOffChainWitness,
     close_account::CloseAccountWitness,
     deposit::DepositWitness,
     forced_exit::ForcedExitWitness,
+    full_change_group::FullChangeGroupWitness,
     full_exit::FullExitWitness,
     mint_nft::MintNFTWitness,
     swap::SwapWitness,
@@ -20,10 +22,12 @@ pub use self::{
     withdraw_nft::WithdrawNFTWitness,
 };
 
+pub mod change_group;
 pub mod change_pubkey_offchain;
 pub mod close_account;
 pub mod deposit;
 pub mod forced_exit;
+mod full_change_group;
 pub mod full_exit;
 pub mod mint_nft;
 pub mod noop;

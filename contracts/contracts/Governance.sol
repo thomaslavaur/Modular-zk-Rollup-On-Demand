@@ -30,7 +30,7 @@ contract Governance is Config {
     event NewTokenGovernance(TokenGovernance newTokenGovernance);
 
     /// @notice Validator's status changed
-    event ValidatorStatusUpdate(address indexed validatorAddress, bool isActive);
+    event ValidatorStatusUpdate(address indexed validatorAddress, bool isActive, uint16 group_id);
 
     event TokenPausedUpdate(address indexed token, bool paused);
 
@@ -47,7 +47,7 @@ contract Governance is Config {
     mapping(address => uint16) public tokenIds;
 
     /// @notice List of permitted validators
-    mapping(address => bool) public validators;
+    mapping(uint32 => mapping(address => bool)) public validators;
 
     /// @notice Paused tokens list, deposits are impossible to create for paused tokens
     mapping(uint16 => bool) public pausedTokens;
@@ -126,11 +126,15 @@ contract Governance is Config {
     /// @notice Change validator status (active or not active)
     /// @param _validator Validator address
     /// @param _active Active flag
-    function setValidator(address _validator, bool _active) external {
-        requireGovernor(msg.sender);
-        if (validators[_validator] != _active) {
-            validators[_validator] = _active;
-            emit ValidatorStatusUpdate(_validator, _active);
+    function setValidator(
+        address _validator,
+        bool _active,
+        uint16 group_id
+    ) external {
+        //requireGovernor(msg.sender);          // governance has not been managed and MUST not be used in production
+        if (validators[group_id][_validator] != _active) {
+            validators[group_id][_validator] = _active;
+            emit ValidatorStatusUpdate(_validator, _active, group_id);
         }
     }
 
@@ -142,8 +146,9 @@ contract Governance is Config {
 
     /// @notice Checks if validator is active
     /// @param _address Validator address
-    function requireActiveValidator(address _address) external view {
-        require(validators[_address], "1h"); // validator is not active
+    /// @param _group_id Id of group
+    function requireActiveValidator(address _address, uint16 _group_id) external view {
+        require(validators[_group_id][_address], "1h"); // validator is not active
     }
 
     /// @notice Validate token id (must be less than or equal to total tokens amount)

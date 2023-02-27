@@ -396,13 +396,27 @@ impl<DB: DatabaseInterface> ETHSender<DB> {
             "Sending new tx: [ETH Operation <id: {}, type: {:?}>. ETH tx: {}. ZKSync operation: {}]",
             new_op.id, new_op.op_type, self.eth_tx_description(&signed_tx), self.zksync_operation_description(&new_op),
         );
-        if let Err(e) = self.ethereum.send_raw_tx(signed_tx.raw_tx).await {
+        // display tx receipt or an error message when sending tx
+        match self.ethereum.send_raw_tx(signed_tx.raw_tx).await {
+            Err(e) => vlog::warn!("Error while sending the operation: {}", e),
+            Ok(tx) => match self.ethereum.tx_receipt(tx).await {
+                Err(e) => vlog::warn!("cannot get tx receipt from {}", tx),
+                Ok(tx_receipt) => {
+                    if let Some(recept) = tx_receipt {
+                        vlog::info!("tx_receipt: {:?}", recept);
+                    }
+                }
+            },
+        }
+        /*
+        if let Err(e) =  {
             // Sending tx error is not critical: this will result in transaction being considered stuck,
             // and resent. We can't do anything about this failure either, since it's most probably is not
             // related to the node logic, so we just log this error and pretend to have this operation
             // processed.
             vlog::warn!("Error while sending the operation: {}", e);
         }
+        */
 
         transaction.commit().await?;
 

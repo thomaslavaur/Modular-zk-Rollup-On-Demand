@@ -20,6 +20,7 @@ pub struct ForcedExitRequest {
     pub id: ForcedExitRequestId,
     pub target: Address,
     pub tokens: Vec<TokenId>,
+    pub group: u16,
     #[serde(with = "BigUintSerdeAsRadix10Str")]
     pub price_in_wei: BigUint,
     pub valid_until: DateTime<Utc>,

@@ -125,6 +125,7 @@ pub enum OutputFeeType {
     MintNFT,
     WithdrawNFT,
     FastWithdrawNFT,
+    Swap,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

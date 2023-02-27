@@ -18,6 +18,7 @@ pub struct WithdrawNFTBuilder<'a, S: EthereumSigner, P: Provider> {
     token: Option<TokenId>,
     fee_token: Option<Token>,
     fee: Option<BigUint>,
+    group: Option<u16>,
     nonce: Option<Nonce>,
     valid_from: Option<u64>,
     valid_until: Option<u64>,
@@ -36,6 +37,7 @@ where
             token: None,
             fee_token: None,
             fee: None,
+            group: None,
             nonce: None,
             valid_from: None,
             valid_until: None,
@@ -53,6 +55,9 @@ where
         let fee_token = self
             .fee_token
             .ok_or_else(|| ClientError::MissingRequiredField("fee_token".into()))?;
+        let group = self
+            .group
+            .ok_or_else(|| ClientError::MissingRequiredField("group".into()))?;
 
         let fee = match self.fee {
             Some(fee) => fee,
@@ -88,6 +93,7 @@ where
                 token,
                 fee_token,
                 fee,
+                group,
                 nonce,
                 TimeRange::new(valid_from, valid_until),
             )
@@ -172,6 +178,12 @@ where
 
         self.to = Some(to);
         Ok(self)
+    }
+
+    /// Sets the group of the withdraw_nft.
+    pub fn group(mut self, group: u16) -> Self {
+        self.group = Some(group);
+        self
     }
 
     /// Sets the transaction nonce.

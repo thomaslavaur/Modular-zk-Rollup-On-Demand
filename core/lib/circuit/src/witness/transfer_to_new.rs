@@ -37,6 +37,7 @@ pub struct TransferToNewData {
     pub from_account_address: u32,
     pub to_account_address: u32,
     pub new_address: Fr,
+    pub group: u16,
     pub valid_from: u64,
     pub valid_until: u64,
 }
@@ -68,6 +69,7 @@ impl Witness for TransferToNewWitness<Bn256> {
             from_account_address: *transfer_to_new.from,
             to_account_address: *transfer_to_new.to,
             new_address: eth_address_to_fr(&transfer_to_new.tx.to),
+            group: transfer_to_new.tx.group,
             valid_from: time_range.valid_from,
             valid_until: time_range.valid_until,
         };
@@ -112,6 +114,7 @@ impl Witness for TransferToNewWitness<Bn256> {
             &self.args.fee.unwrap(),
             FEE_MANTISSA_BIT_WIDTH + FEE_EXPONENT_BIT_WIDTH,
         );
+
         resize_grow_only(
             &mut pubdata_bits,
             TransferToNewOp::CHUNKS * CHUNK_BIT_WIDTH,
@@ -204,6 +207,7 @@ impl TransferToNewWitness<Bn256> {
         let account_address_from_fe = fr_from(transfer_to_new.from_account_address);
         let account_address_to_fe = fr_from(transfer_to_new.to_account_address);
         let token_fe = fr_from(transfer_to_new.token);
+        let group = fr_from(transfer_to_new.group);
         let amount_as_field_element = fr_from(transfer_to_new.amount);
 
         let amount_bits = FloatConversions::to_float(
@@ -369,6 +373,7 @@ impl TransferToNewWitness<Bn256> {
                 fee: Some(fee_encoded),
                 a: Some(a),
                 b: Some(b),
+                group: Some(group),
                 valid_from: Some(fr_from(&valid_from)),
                 valid_until: Some(fr_from(&valid_until)),
                 ..Default::default()

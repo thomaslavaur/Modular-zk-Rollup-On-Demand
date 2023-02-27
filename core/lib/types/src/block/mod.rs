@@ -75,6 +75,9 @@ impl ExecutedPriorityOp {
                 }
             }
             crate::ZkSyncPriorityOp::FullExit(full_exit) => full_exit.account_id,
+            crate::ZkSyncPriorityOp::FullChangeGroup(full_change_group) => {
+                full_change_group.account_id
+            }
         }
     }
 }

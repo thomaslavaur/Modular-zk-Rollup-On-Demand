@@ -12,6 +12,9 @@ use crate::{
     tokens_cache::TokensCache,
     types::{AccountInfo, BlockStatus, NFT},
 };
+use web3::contract::Options;
+use web3::signing::Key;
+use web3::types::U256;
 
 #[derive(Debug)]
 pub struct Wallet<S: EthereumSigner, P: Provider> {
@@ -148,6 +151,26 @@ where
         WithdrawBuilder::new(self)
     }
 
+    /// Initializes `ForcedExit` transaction sending
+    pub fn start_forced_exit(&self) -> ForcedExitBuilder<'_, S, P> {
+        ForcedExitBuilder::new(self)
+    }
+
+    /// Initializes `ChangeGroup` transaction sending.
+    pub fn start_change_group(&self) -> ChangeGroupBuilder<'_, S, P> {
+        ChangeGroupBuilder::new(self)
+    }
+
+    /// Initializes `Order` builder, notice an order is not a zksync transaction.
+    pub fn start_order(&self) -> OrderBuilder<'_, S, P> {
+        OrderBuilder::new(self)
+    }
+
+    /// Initializes `Swap` transaction sending.
+    pub fn start_swap(&self) -> SwapBuilder<'_, S, P> {
+        SwapBuilder::new(self)
+    }
+
     /// Initializes `MintNFT` transaction sending.
     pub fn start_mint_nft(&self) -> MintNFTBuilder<'_, S, P> {
         MintNFTBuilder::new(self)
@@ -179,5 +202,33 @@ where
         } else {
             Err(ClientError::NoEthereumPrivateKey)
         }
+    }
+
+    pub async fn get_pending_balance(&self) -> Result<(), ClientError> {
+        let ethereum = self.ethereum("http://127.0.0.1:8545").await?;
+
+        let main_contract = {
+            let address = self.provider.contract_address().await?;
+            let add = address.main_contract.parse().unwrap();
+            ethereum.client().main_contract_with_address(add)
+        };
+
+        let token_eth = self.tokens.resolve("ETH".into()).unwrap();
+
+        let pending: U256 = {
+            let query = main_contract.query(
+                "getPendingBalance",
+                (self.address(), token_eth.address),
+                None,
+                Options::default(),
+                None,
+            );
+
+            query.await.unwrap()
+        };
+
+        println!("{}", pending);
+
+        Ok(())
     }
 }

@@ -1,0 +1,184 @@
+use num::{BigUint, FromPrimitive, ToPrimitive};
+use serde::{Deserialize, Serialize};
+use zksync_crypto::params::{
+    ACCOUNT_ID_BIT_WIDTH, ADDRESS_WIDTH, BALANCE_BIT_WIDTH, CHUNK_BYTES, CONTENT_HASH_WIDTH,
+    ETH_ADDRESS_BIT_WIDTH, GROUP_LEN, LEGACY_CHUNK_BYTES, LEGACY_TOKEN_BIT_WIDTH, TOKEN_BIT_WIDTH,
+};
+use zksync_crypto::primitives::FromBytes;
+use zksync_utils::BigUintSerdeWrapper;
+
+use crate::{
+    operations::error::FullChangeGroupOpError, AccountId, Address, FullChangeGroup, TokenId, H256,
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FullChangeGroupOp {
+    pub priority_op: FullChangeGroup,
+    /// None if withdraw was unsuccessful
+    pub withdraw_amount: Option<BigUintSerdeWrapper>,
+    pub creator_account_id: Option<AccountId>,
+    pub creator_address: Option<Address>,
+    pub serial_id: Option<u32>,
+    pub content_hash: Option<H256>,
+}
+
+impl FullChangeGroupOp {
+    pub const LEGACY_CHUNKS: usize = 6;
+    pub const CHUNKS: usize = 11;
+    pub const OP_CODE: u8 = 0x0d;
+    pub const WITHDRAW_DATA_PREFIX: [u8; 1] = [0];
+
+    pub fn chunks(&self) -> usize {
+        if self.priority_op.is_legacy {
+            Self::LEGACY_CHUNKS
+        } else {
+            Self::CHUNKS
+        }
+    }
+
+    pub(crate) fn get_public_data(&self) -> Vec<u8> {
+        let mut data = vec![Self::OP_CODE];
+        data.extend_from_slice(&self.priority_op.account_id.to_be_bytes());
+        data.extend_from_slice(self.priority_op.eth_address.as_bytes());
+        data.extend_from_slice(&self.priority_op.token.to_be_bytes());
+        data.extend_from_slice(&self.priority_op.group1.to_be_bytes());
+        data.extend_from_slice(&self.priority_op.group2.to_be_bytes());
+        data.extend_from_slice(
+            &self
+                .withdraw_amount
+                .clone()
+                .unwrap_or_default()
+                .0
+                .to_u128()
+                .unwrap()
+                .to_be_bytes(),
+        );
+        data.extend_from_slice(&self.creator_account_id.unwrap_or_default().to_be_bytes());
+        data.extend_from_slice(self.creator_address.unwrap_or_default().as_bytes());
+        data.extend_from_slice(&self.serial_id.unwrap_or_default().to_be_bytes());
+        data.extend_from_slice(self.content_hash.unwrap_or_default().as_bytes());
+        data.resize(Self::CHUNKS * CHUNK_BYTES, 0x00);
+        data
+    }
+
+    pub(crate) fn get_withdrawal_data(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&Self::WITHDRAW_DATA_PREFIX); // first byte is a bool variable 'addToPendingWithdrawalsQueue'
+        data.extend_from_slice(self.priority_op.eth_address.as_bytes());
+        data.extend_from_slice(&self.priority_op.token.to_be_bytes());
+        data.extend_from_slice(
+            &self
+                .withdraw_amount
+                .clone()
+                .map(|a| a.0.to_u128().unwrap())
+                .unwrap_or(0)
+                .to_be_bytes(),
+        );
+        data.extend_from_slice(&self.creator_account_id.unwrap_or_default().to_be_bytes());
+        data
+    }
+
+    pub fn from_public_data(bytes: &[u8]) -> Result<Self, FullChangeGroupOpError> {
+        if bytes.len() != Self::CHUNKS * CHUNK_BYTES {
+            return Err(FullChangeGroupOpError::PubdataSizeMismatch);
+        }
+
+        let account_id_offset = 1;
+        let eth_address_offset = account_id_offset + ACCOUNT_ID_BIT_WIDTH / 8;
+        let token_offset = eth_address_offset + ETH_ADDRESS_BIT_WIDTH / 8;
+        let group1_offset = token_offset + TOKEN_BIT_WIDTH / 8;
+        let group2_offset = group1_offset + GROUP_LEN;
+        let amount_offset = group2_offset + GROUP_LEN;
+        let creator_address = amount_offset + BALANCE_BIT_WIDTH / 8;
+        let content_hash_offset = creator_address + ADDRESS_WIDTH / 8;
+
+        let account_id = u32::from_bytes(&bytes[account_id_offset..eth_address_offset])
+            .ok_or(FullChangeGroupOpError::CannotGetAccountId)?;
+        let eth_address = Address::from_slice(&bytes[eth_address_offset..token_offset]);
+        let token = u32::from_bytes(&bytes[token_offset..amount_offset])
+            .ok_or(FullChangeGroupOpError::CannotGetTokenId)?;
+        let group1 = u16::from_bytes(&bytes[group1_offset..group1_offset + GROUP_LEN])
+            .ok_or(FullChangeGroupOpError::CannotGetGroup)?;
+        let group2 = u16::from_bytes(&bytes[group2_offset..group2_offset + GROUP_LEN])
+            .ok_or(FullChangeGroupOpError::CannotGetGroup)?;
+        let amount = BigUint::from_u128(
+            u128::from_bytes(&bytes[amount_offset..amount_offset + BALANCE_BIT_WIDTH / 8])
+                .ok_or(FullChangeGroupOpError::CannotGetAmount)?,
+        )
+        .unwrap();
+
+        let creator_address = Address::from_slice(&bytes[creator_address..content_hash_offset]);
+
+        let content_hash = H256::from_slice(
+            &bytes[content_hash_offset..content_hash_offset + CONTENT_HASH_WIDTH / 8],
+        );
+
+        Ok(Self {
+            priority_op: FullChangeGroup {
+                account_id: AccountId(account_id),
+                eth_address,
+                token: TokenId(token),
+                group1,
+                group2,
+                is_legacy: false,
+            },
+            withdraw_amount: Some(amount.into()),
+            creator_address: Some(creator_address),
+            creator_account_id: None, // Unknown from pub data
+            serial_id: None,          // Unknown from pub data
+            content_hash: Some(content_hash),
+        })
+    }
+
+    pub fn from_legacy_public_data(bytes: &[u8]) -> Result<Self, FullChangeGroupOpError> {
+        if bytes.len() != Self::LEGACY_CHUNKS * LEGACY_CHUNK_BYTES {
+            return Err(FullChangeGroupOpError::PubdataSizeMismatch);
+        }
+
+        let account_id_offset = 1;
+        let eth_address_offset = account_id_offset + ACCOUNT_ID_BIT_WIDTH / 8;
+        let token_offset = eth_address_offset + ETH_ADDRESS_BIT_WIDTH / 8;
+        let group1_offset = token_offset + LEGACY_TOKEN_BIT_WIDTH / 8;
+        let group2_offset = group1_offset + GROUP_LEN;
+        let amount_offset = group2_offset + GROUP_LEN;
+
+        let account_id = u32::from_bytes(&bytes[account_id_offset..eth_address_offset])
+            .ok_or(FullChangeGroupOpError::CannotGetAccountId)?;
+        let eth_address = Address::from_slice(&bytes[eth_address_offset..token_offset]);
+        let token = u32::from_bytes(&bytes[token_offset..amount_offset])
+            .ok_or(FullChangeGroupOpError::CannotGetTokenId)?;
+        let group1 = u16::from_bytes(&bytes[group1_offset..group1_offset + GROUP_LEN])
+            .ok_or(FullChangeGroupOpError::CannotGetGroup)?;
+        let group2 = u16::from_bytes(&bytes[group2_offset..group2_offset + GROUP_LEN])
+            .ok_or(FullChangeGroupOpError::CannotGetGroup)?;
+        let amount = BigUint::from_u128(
+            u128::from_bytes(&bytes[amount_offset..amount_offset + BALANCE_BIT_WIDTH / 8])
+                .ok_or(FullChangeGroupOpError::CannotGetAmount)?,
+        )
+        .unwrap();
+
+        Ok(Self {
+            priority_op: FullChangeGroup {
+                account_id: AccountId(account_id),
+                eth_address,
+                token: TokenId(token),
+                group1,
+                group2,
+                is_legacy: true,
+            },
+            withdraw_amount: Some(amount.into()),
+            creator_account_id: None,
+            creator_address: None,
+            serial_id: None,
+            content_hash: None,
+        })
+    }
+
+    pub fn get_updated_account_ids(&self) -> Vec<AccountId> {
+        vec![self.priority_op.account_id]
+    }
+
+    pub fn withdraw_amount(&self) -> Option<BigUint> {
+        self.withdraw_amount.as_ref().map(|a| a.0.clone())
+    }
+}

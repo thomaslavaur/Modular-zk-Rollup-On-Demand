@@ -6,7 +6,7 @@ We have maintained references to zkSync in the code but we are not affiliated wi
 
 ## Aim and Motivation
 
-This code is a proof of concept to measure and demonstrate our proposal from the article [Modular zk-Rollup On-Demand](To-be-include).
+This code is a proof of concept to measure and demonstrate our proposal from the article [Modular zk-Rollup On-Demand](https://www.sciencedirect.com/science/article/pii/S1084804523000978).
 It aims to implement and evaluate the addition of partitioning within smart contracts supporting multiple groups.
 Each group can thus become a zk-rollup in its own right but share smart contracts and pending balance with all the others.
 This reduces the cost of creating a group and increases the cost of transactions only slightly.
